@@ -2,8 +2,6 @@ import React, { useState, useCallback } from 'react';
 import {  m, AnimatePresence  } from 'framer-motion';
 import Cropper from 'react-easy-crop';
 import { Icon } from '@iconify/react';
-import { storage } from '../firebase/config';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const createImage = (url) =>
   new Promise((resolve, reject) => {
@@ -35,9 +33,7 @@ const getCroppedImg = async (imageSrc, pixelCrop) => {
   );
 
   return new Promise((resolve) => {
-    canvas.toBlob((file) => {
-      resolve(file);
-    }, 'image/jpeg');
+    resolve(canvas.toDataURL('image/jpeg', 0.8));
   });
 };
 
@@ -93,26 +89,12 @@ const ReviewFormModal = ({ isOpen, onClose }) => {
       setIsSubmitting(true);
       setError('');
       try {
-        const croppedImageBlob = await getCroppedImg(imageSrc, croppedAreaPixels);
-        
-        // Upload to Firebase Storage
-        const imageRef = ref(storage, `reviews/${Date.now()}-${Math.floor(Math.random()*10000)}.jpg`);
-        await uploadBytes(imageRef, croppedImageBlob);
-        const downloadUrl = await getDownloadURL(imageRef);
+        const base64Image = await getCroppedImg(imageSrc, croppedAreaPixels);
 
         const response = await fetch('/api/submit-review', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            firstName: formData.firstName,
-            lastName: formData.lastName,
-            designation: formData.designation,
-            company: formData.company,
-            review: formData.review,
-            imageUrl: downloadUrl
-          }),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...formData, imageUrl: base64Image })
         });
 
         const result = await response.json();
