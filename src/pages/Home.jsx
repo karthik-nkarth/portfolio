@@ -1,4 +1,4 @@
-import {  m, useMotionValue, useTransform, animate, useScroll  } from 'framer-motion';
+import {  m, useMotionValue, useTransform, animate, useScroll, AnimatePresence  } from 'framer-motion';
 import { TypeAnimation } from 'react-type-animation';
 import { useRef, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -174,6 +174,7 @@ const Home = () => {
   const [dynamicTestimonials, setDynamicTestimonials] = useState([]);
   const [currentPage, setCurrentPage] = useState(0);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [expandedTestimonial, setExpandedTestimonial] = useState(null);
 
   useEffect(() => {
     fetch('/api/reviews')
@@ -543,7 +544,7 @@ const Home = () => {
               className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6"
             >
               {currentTestimonials.map((testimonial, index) => (
-                <TestimonialCard key={currentPage * testimonialsPerPage + index} testimonial={testimonial} index={index} />
+                <TestimonialCard key={currentPage * testimonialsPerPage + index} testimonial={testimonial} index={index} onExpand={setExpandedTestimonial} />
               ))}
             </m.div>
 
@@ -592,12 +593,66 @@ const Home = () => {
 
       <CallToAction />
       <ReviewFormModal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} />
+      
+      <AnimatePresence>
+        {expandedTestimonial && (
+          <m.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4 sm:p-6"
+            onClick={() => setExpandedTestimonial(null)}
+          >
+            <m.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-gray-800 p-6 sm:p-8 rounded-2xl max-w-2xl w-full shadow-2xl max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">Client Review</h3>
+                <button
+                  onClick={() => setExpandedTestimonial(null)}
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+                >
+                  <Icon icon="hugeicons:cancel-01" className="w-5 h-5 sm:w-6 sm:h-6" />
+                </button>
+              </div>
+
+              <div className="flex items-start gap-4 mb-6">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden bg-gradient-to-br from-orange-500 to-orange-600 flex-shrink-0">
+                  <img 
+                    src={expandedTestimonial.imagePath || `https://api.dicebear.com/7.x/avataaars/svg?seed=${expandedTestimonial.name.replace(/\s/g, '')}`} 
+                    alt={expandedTestimonial.name} 
+                    className="w-full h-full object-cover" 
+                  />
+                </div>
+                <div>
+                  <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{expandedTestimonial.name}</h3>
+                  <p className="text-gray-600 dark:text-gray-400">{expandedTestimonial.role}</p>
+                </div>
+              </div>
+
+              <p className="text-base sm:text-lg text-gray-700 dark:text-gray-300 leading-relaxed mb-6">
+                "{expandedTestimonial.full}"
+              </p>
+
+              <button
+                onClick={() => setExpandedTestimonial(null)}
+                className="w-full py-3 bg-orange-600 hover:bg-orange-700 dark:bg-blue-600 dark:hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
+              >
+                Close
+              </button>
+            </m.div>
+          </m.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
 
-const TestimonialCard = ({ testimonial, index }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+const TestimonialCard = ({ testimonial, index, onExpand }) => {
   const randomAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${testimonial.name.replace(/\s/g, '')}`;
   const avatar = testimonial.imagePath || randomAvatar;
 
@@ -623,60 +678,11 @@ const TestimonialCard = ({ testimonial, index }) => {
       <p className="text-gray-700 dark:text-gray-300 mb-4 italic">"{testimonial.quote}"</p>
 
       <button
-        onClick={() => setIsExpanded(true)}
+        onClick={() => onExpand(testimonial)}
         className="text-orange-600 dark:text-orange-400 font-medium hover:underline"
       >
         Read More
       </button>
-
-      {isExpanded && (
-        <m.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4 sm:p-6"
-          onClick={() => setIsExpanded(false)}
-        >
-          <m.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.8, opacity: 0 }}
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white dark:bg-gray-800 p-6 sm:p-8 rounded-2xl max-w-2xl w-full shadow-2xl max-h-[90vh] overflow-y-auto"
-          >
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">Client Review</h3>
-              <button
-                onClick={() => setIsExpanded(false)}
-                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-              >
-                <Icon icon="hugeicons:cancel-01" className="w-5 h-5 sm:w-6 sm:h-6" />
-              </button>
-            </div>
-
-            <div className="flex items-start gap-4 mb-6">
-              <div className="w-20 h-20 rounded-full overflow-hidden bg-gradient-to-br from-orange-500 to-orange-600 flex-shrink-0">
-                <img src={avatar} alt={testimonial.name} className="w-full h-full object-cover" />
-              </div>
-              <div>
-                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{testimonial.name}</h3>
-                <p className="text-gray-600 dark:text-gray-400">{testimonial.role}</p>
-              </div>
-            </div>
-
-            <p className="text-lg text-gray-700 dark:text-gray-300 leading-relaxed mb-6">
-              "{testimonial.full}"
-            </p>
-
-            <button
-              onClick={() => setIsExpanded(false)}
-              className="w-full py-3 bg-orange-600 hover:bg-orange-700 dark:bg-blue-600 dark:hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
-            >
-              Close
-            </button>
-          </m.div>
-        </m.div>
-      )}
     </m.div>
   );
 };

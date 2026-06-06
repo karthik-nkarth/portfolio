@@ -51,7 +51,7 @@ const CallToAction = () => {
   return (
     <section className="py-16 sm:py-24 px-4 sm:px-6 relative overflow-hidden bg-gradient-to-b from-transparent to-orange-50/50 dark:to-blue-900/10">
       <div className="max-w-7xl mx-auto relative z-10">
-        <div className="grid lg:grid-cols-2 gap-16 items-center">
+        <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
           
           {/* Left Side: Content */}
           <m.div
@@ -73,7 +73,7 @@ const CallToAction = () => {
               Whether you want to scale your paid media, set up flawless tracking infrastructure, or automate your workflows - I am here to help develop your business ahead. Drop me a message and let's get started.
             </p>
             
-            <div className="flex flex-col sm:flex-row gap-6 mb-12 lg:mb-0">
+            <div className="flex flex-col sm:flex-row gap-6 mb-2 lg:mb-0">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-white dark:bg-gray-800 shadow-md rounded-full flex items-center justify-center">
                   <Icon icon="hugeicons:mail-01" className="w-5 h-5 text-orange-500 dark:text-blue-400" />
