@@ -80,7 +80,7 @@ const CallToAction = () => {
                 </div>
                 <div>
                   <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">Email Me Directly</p>
-                  <a href="mailto:karthik.hamsanarayanan@gmail.com" className="font-semibold text-gray-900 dark:text-white hover:text-orange-600 transition-colors break-all">
+                  <a href="mailto:karthik.hamsanarayanan@gmail.com" className="text-xs sm:text-sm md:text-base font-semibold text-gray-900 dark:text-white hover:text-orange-600 transition-colors">
                     karthik.hamsanarayanan@gmail.com
                   </a>
                 </div>
