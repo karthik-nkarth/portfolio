@@ -162,15 +162,18 @@ const FreelanceServices = () => {
                 
                 return (
                   <div key={`${client.domain}-${index}`} className="flex flex-col items-center justify-center mx-8 sm:mx-12 min-w-[120px] group cursor-pointer">
-                    <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl mb-4 group-hover:scale-110 transition-transform duration-300 overflow-hidden p-[2px] shadow-sm">
+                    <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl mb-4 group-hover:scale-110 transition-transform duration-300 overflow-hidden p-[3px] shadow-sm">
                       {/* Base static border */}
                       <div className="absolute inset-0 bg-gray-200 dark:bg-gray-800 rounded-2xl transition-opacity duration-300 group-hover:opacity-0"></div>
                       
-                      {/* Rotating glow border effect */}
-                      <div className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent_0_300deg,#ea580c_360deg)] dark:bg-[conic-gradient(from_0deg,transparent_0_300deg,#3b82f6_360deg)] animate-[spin_2s_linear_infinite] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                      {/* Rotating glow border effect (Blurred for extra glow) */}
+                      <div className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent_0_180deg,#f97316_360deg)] dark:bg-[conic-gradient(from_0deg,transparent_0_180deg,#0ea5e9_360deg)] animate-[spin_2s_linear_infinite] opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-md"></div>
+                      
+                      {/* Rotating glow border effect (Solid core) */}
+                      <div className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent_0_180deg,#ea580c_360deg)] dark:bg-[conic-gradient(from_0deg,transparent_0_180deg,#3b82f6_360deg)] animate-[spin_2s_linear_infinite] opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                       
                       {/* Inner content layer */}
-                      <div className="absolute inset-[2px] bg-white dark:bg-gray-900 rounded-[14px] flex items-center justify-center p-3 z-10">
+                      <div className="absolute inset-[3px] bg-white dark:bg-gray-900 rounded-[13px] flex items-center justify-center p-3 z-10">
                         <div className="w-full h-full flex items-center justify-center dark:bg-white dark:rounded-xl dark:p-1">
                           <img 
                             src={imgSrc} 

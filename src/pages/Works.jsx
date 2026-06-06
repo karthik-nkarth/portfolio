@@ -224,21 +224,39 @@ const Works = () => {
               </AnimatePresence>
             </div>
 
-            {/* Pagination Dots */}
+            {/* Pagination Controls */}
             {totalPages > 1 && (
-              <div className="flex justify-center items-center gap-3 mt-10">
-                {Array.from({ length: totalPages }).map((_, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setCurrentPage(idx)}
-                    className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                      currentPage === idx 
-                        ? 'bg-orange-600 dark:bg-cyan-500 scale-125' 
-                        : 'bg-gray-300 dark:bg-gray-700 hover:bg-orange-300 dark:hover:bg-cyan-800'
-                    }`}
-                    aria-label={`Go to page ${idx + 1}`}
-                  />
-                ))}
+              <div className="flex justify-center items-center gap-4 mt-10">
+                <button
+                  onClick={() => setCurrentPage((prev) => (prev - 1 + totalPages) % totalPages)}
+                  className="p-2 rounded-full bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-orange-50 dark:hover:bg-cyan-900/30 hover:text-orange-600 dark:hover:text-cyan-400 transition-colors shadow-sm"
+                  aria-label="Previous page"
+                >
+                  <Icon icon="hugeicons:arrow-left-01" className="w-5 h-5" />
+                </button>
+                
+                <div className="flex justify-center items-center gap-3">
+                  {Array.from({ length: totalPages }).map((_, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setCurrentPage(idx)}
+                      className={`w-3 h-3 rounded-full transition-all duration-300 ${
+                        currentPage === idx 
+                          ? 'bg-orange-600 dark:bg-cyan-500 scale-125' 
+                          : 'bg-gray-300 dark:bg-gray-700 hover:bg-orange-300 dark:hover:bg-cyan-800'
+                      }`}
+                      aria-label={`Go to page ${idx + 1}`}
+                    />
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => setCurrentPage((prev) => (prev + 1) % totalPages)}
+                  className="p-2 rounded-full bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-orange-50 dark:hover:bg-cyan-900/30 hover:text-orange-600 dark:hover:text-cyan-400 transition-colors shadow-sm"
+                  aria-label="Next page"
+                >
+                  <Icon icon="hugeicons:arrow-right-01" className="w-5 h-5" />
+                </button>
               </div>
             )}
           </m.div>
