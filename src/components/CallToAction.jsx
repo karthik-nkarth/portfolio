@@ -49,7 +49,7 @@ const CallToAction = () => {
   };
 
   return (
-    <section className="py-24 px-6 relative overflow-hidden bg-gradient-to-b from-transparent to-orange-50/50 dark:to-blue-900/10">
+    <section className="py-16 sm:py-24 px-4 sm:px-6 relative overflow-hidden bg-gradient-to-b from-transparent to-orange-50/50 dark:to-blue-900/10">
       <div className="max-w-7xl mx-auto relative z-10">
         <div className="grid lg:grid-cols-2 gap-16 items-center">
           
@@ -80,7 +80,7 @@ const CallToAction = () => {
                 </div>
                 <div>
                   <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">Email Me Directly</p>
-                  <a href="mailto:karthik.hamsanarayanan@gmail.com" className="font-semibold text-gray-900 dark:text-white hover:text-orange-600 transition-colors">
+                  <a href="mailto:karthik.hamsanarayanan@gmail.com" className="font-semibold text-gray-900 dark:text-white hover:text-orange-600 transition-colors break-all">
                     karthik.hamsanarayanan@gmail.com
                   </a>
                 </div>
@@ -94,7 +94,7 @@ const CallToAction = () => {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.8, delay: 0.2 }}
-            className="bg-white dark:bg-gray-800 rounded-3xl p-8 sm:p-10 shadow-2xl border border-gray-100 dark:border-gray-700 relative"
+            className="bg-white dark:bg-gray-800 rounded-3xl p-6 sm:p-10 shadow-2xl border border-gray-100 dark:border-gray-700 relative"
           >
             {/* Decorative blurs */}
             <div className="absolute -top-10 -right-10 w-32 h-32 bg-orange-400/20 dark:bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />

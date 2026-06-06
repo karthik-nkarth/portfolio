@@ -56,7 +56,7 @@ const Footer = () => {
             <ul className="space-y-3">
               <li className="flex items-center gap-2 text-gray-400">
                 <Icon icon="hugeicons:mail-01" className="w-4 h-4" />
-                <a href="mailto:karthik.hamsanarayanan@gmail.com" className="hover:text-orange-400 transition-colors">
+                <a href="mailto:karthik.hamsanarayanan@gmail.com" className="hover:text-orange-400 transition-colors break-all">
                   karthik.hamsanarayanan@gmail.com
                 </a>
               </li>

@@ -72,7 +72,7 @@ const Contact = () => {
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
             >
-              <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 sm:p-8 shadow-lg">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 sm:p-8 shadow-lg">
                 <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-6">
                   Contact Information
                 </h2>
@@ -84,7 +84,7 @@ const Contact = () => {
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-900 dark:text-white mb-1">Email</h3>
-                      <a href="mailto:karthik.hamsanarayanan@gmail.com" className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors">
+                      <a href="mailto:karthik.hamsanarayanan@gmail.com" className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors break-all">
                         karthik.hamsanarayanan@gmail.com
                       </a>
                     </div>
@@ -126,7 +126,7 @@ const Contact = () => {
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6, delay: 0.4 }}
             >
-              <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 sm:p-8 shadow-lg">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 sm:p-8 shadow-lg">
                 <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-6">
                   Send a Message
                 </h2>
