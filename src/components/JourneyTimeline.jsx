@@ -44,9 +44,9 @@ const JourneyTimeline = () => {
     .arm-l { animation: lazy-walk-arm-l 1s infinite ease-in-out; transform-origin: 0px 0px; }
     .arm-r { animation: lazy-walk-arm-r 1s infinite ease-in-out; transform-origin: 0px 0px; }
 
-    @keyframes type-arm { 0%, 100% { transform: rotate(10deg); } 50% { transform: rotate(-15deg); } }
-    .type-l { animation: type-arm 0.15s infinite; transform-origin: 0 0; }
-    .type-r { animation: type-arm 0.12s infinite; transform-origin: 0 0; animation-delay: 0.05s; }
+    @keyframes type-arm { 0%, 100% { transform: rotate(5deg); } 50% { transform: rotate(-5deg); } }
+    .type-l { animation: type-arm 0.8s infinite ease-in-out; transform-origin: 0px 0px; }
+    .type-r { animation: type-arm 0.9s infinite ease-in-out; transform-origin: 0px 0px; animation-delay: 0.2s; }
   `;
 
   // 1. Stickman Walk (Nodes 1 to 2, and 2 to 3)
