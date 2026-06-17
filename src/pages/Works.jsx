@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 
 const Works = () => {
   const [currentPage, setCurrentPage] = useState(0);
+  const [isSpecialProjectModalOpen, setIsSpecialProjectModalOpen] = useState(false);
+  const [selectedSpecialProject, setSelectedSpecialProject] = useState(null);
 
   const websites = [
     {
@@ -13,6 +15,14 @@ const Works = () => {
       url: 'https://www.pracy.in/',
       description: 'E-commerce website built on Shopify with custom theme development and payment integration.',
       category: 'E-commerce'
+    },
+    {
+      image: '/lindblom_logo.png',
+      title: 'Lindblom Hypnotherapy',
+      platform: 'Squarespace',
+      url: 'https://www.lindblomhypnotherapy.com.au/',
+      description: 'Professional clinical hypnotherapy website with a high conversion optimized landing page.',
+      category: 'Health'
     },
     {
       image: 'https://www.google.com/s2/favicons?domain=autocraftmelbourne.com.au&sz=128',
@@ -58,7 +68,7 @@ const Works = () => {
       }, 10000);
       return () => clearInterval(interval);
     }
-  }, [totalPages]);
+  }, [totalPages, currentPage]);
 
   const currentWebsites = websites.slice(currentPage * itemsPerPage, (currentPage + 1) * itemsPerPage);
 
@@ -122,6 +132,32 @@ const Works = () => {
       detail: 'CM360, SA360, Cross-platform analysis',
       channel: 'Cognizant (Client: Google)',
       category: 'Attribution'
+    }
+  ];
+
+  const specialProjects = [
+    {
+      id: 'wcc-fix',
+      title: 'Google Ads Call Conversion Fix',
+      tech: 'JavaScript / DOM',
+      platform: 'Squarespace',
+      shortDesc: 'A unified injection script that restores monkey-patched native JS functions to rescue failing Google Ads conversions.',
+      imageIcon: '/wcc_logo.png',
+      details: {
+        issue: "Google Ads Website Call Conversions (WCC) were failing on a Squarespace site. Google's tracking script relies on native JS methods (like Object.defineProperties) to safely scan the DOM, but Squarespace core scripts were 'monkey-patching' these methods, causing the Google script to silently crash before swapping the phone numbers.",
+        identification: "By deeply inspecting the browser's DevTools console, we found that calling Object.defineProperties.toString() returned a custom wrapper function instead of the native [native code]. This was the smoking gun proving the interference.",
+        resolution: 'Developed a "God-Mode" unified injector script. It waits for the page to fully load, injects a hidden iframe to resurrect the pure native JS functions, overwrites the monkey-patched versions, and then dynamically loads the Google Tag. We utilized the phone_conversion_callback to directly update customized, animated floating CTAs without needing visible bait text.',
+        code: `<script>
+window.addEventListener('load',function(){
+  var id='AW-XXXXXXXXXX', lbl='YOUR_LABEL_HERE', num='0400 000 000';
+  var i=document.createElement('iframe');i.style.display='none';document.body.appendChild(i);
+  window.Object.defineProperty=i.contentWindow.Object.defineProperty;window.Object.defineProperties=i.contentWindow.Object.defineProperties;
+  var s=document.createElement('script');s.src='https://www.googletagmanager.com/gtag/js?id='+id;s.async=1;document.head.appendChild(s);
+  window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());
+  gtag('config',id+'/'+lbl,{'phone_conversion_number':num});
+});
+</script>`
+      }
     }
   ];
 
@@ -261,6 +297,82 @@ const Works = () => {
             )}
           </m.div>
 
+          {/* Section 3: My Projects & Custom Solutions */}
+          <m.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="mt-20 mb-16 md:mb-20"
+          >
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-8">
+              My Projects & Custom Solutions
+            </h2>
+            <div className="grid sm:grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
+              {specialProjects.map((project, index) => (
+                <m.div
+                  key={project.id}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.4, delay: index * 0.1 }}
+                  whileHover={{ y: -5 }}
+                  onClick={() => {
+                    setSelectedSpecialProject(project);
+                    setIsSpecialProjectModalOpen(true);
+                  }}
+                  className="relative bg-white/30 dark:bg-gray-900 rounded-[2rem] p-[2px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_0_20px_rgba(0,0,0,0.5)] group overflow-hidden transition-all hover:shadow-[0_0_30px_rgba(234,88,12,0.1)] dark:hover:shadow-[0_0_30px_rgba(59,130,246,0.2)] backdrop-blur-md cursor-pointer"
+                >
+                  {/* Background Orange Shade */}
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-orange-500/20 dark:bg-blue-500/10 blur-[50px] rounded-full pointer-events-none" />
+
+                  {/* Cyberpunk Animated Border Glow */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-orange-400 via-amber-300 to-orange-400 dark:from-blue-500 dark:via-cyan-400 dark:to-blue-500 opacity-0 group-hover:opacity-30 transition-opacity duration-500 rounded-[2rem]" />
+                  
+                  {/* Inner Tech Card */}
+                  <div className="relative h-full bg-white/60 dark:bg-gray-950/90 rounded-[1.9rem] p-6 md:p-8 backdrop-blur-2xl border border-white/50 dark:border-gray-800 z-10 flex flex-col">
+                    <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.03)_1px,transparent_1px)] dark:bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none rounded-[1.9rem]" />
+                    
+                    <div className="flex items-center justify-between mb-8 relative z-20">
+                      <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900 rounded-xl flex items-center justify-center p-2 shadow-[0_4px_15px_rgba(0,0,0,0.05)] dark:shadow-[0_0_15px_rgba(255,255,255,0.1)] group-hover:scale-110 transition-all duration-300 ring-1 ring-gray-200 dark:ring-white/10">
+                        {project.imageIcon ? (
+                          <img src={project.imageIcon} alt={project.title} className="w-10 h-10 object-contain drop-shadow-lg" />
+                        ) : (
+                          <Icon icon={project.icon} className="w-8 h-8 text-orange-600 dark:text-cyan-400" />
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <span className="px-3 py-1 bg-white/80 dark:bg-gray-900/80 border border-orange-200 dark:border-cyan-500/30 text-orange-600 dark:text-cyan-400 rounded-full text-xs font-mono font-bold uppercase tracking-widest shadow-sm">
+                          {project.tech}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mb-6 relative z-20 flex-grow">
+                      <h3 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-gray-900 to-gray-600 dark:from-gray-100 dark:to-gray-400 mb-3 tracking-tight drop-shadow-sm dark:drop-shadow-md">
+                        {project.title}
+                      </h3>
+                      <div className="flex items-center gap-2 mb-5">
+                        <div className="w-2.5 h-2.5 rounded-full bg-orange-500 dark:bg-cyan-500 animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.8)] dark:shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
+                        <p className="text-sm font-mono font-bold text-gray-700 dark:text-gray-400 uppercase tracking-[0.15em]">
+                          {project.platform}
+                        </p>
+                      </div>
+                      <p className="text-gray-800 dark:text-gray-300 leading-relaxed text-base font-medium">
+                        {project.shortDesc}
+                      </p>
+                    </div>
+
+                    <div className="pt-6 border-t border-gray-200/60 dark:border-gray-800 relative z-20 flex items-center justify-between mt-auto">
+                      <span className="inline-flex items-center gap-2 text-orange-600 dark:text-cyan-400 font-bold transition-all group/link tracking-wide text-base">
+                        View Solution
+                        <Icon icon="hugeicons:arrow-right-01" className="w-5 h-5 group-hover/link:translate-x-1 transition-transform" />
+                      </span>
+                    </div>
+                  </div>
+                </m.div>
+              ))}
+            </div>
+          </m.div>
           {/* Section 2: My Skills and Services */}
           <m.div
             initial={{ opacity: 0, y: 20 }}
@@ -327,6 +439,7 @@ const Works = () => {
               ))}
             </div>
           </m.div>
+
         </div>
       </section>
 
@@ -364,6 +477,99 @@ const Works = () => {
           </m.a>
         </div>
       </section>
+
+      {/* Special Project Modal */}
+      <AnimatePresence>
+        {isSpecialProjectModalOpen && selectedSpecialProject && (
+          <m.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4 sm:p-6"
+            onClick={() => setIsSpecialProjectModalOpen(false)}
+          >
+            <m.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 sm:p-8 rounded-3xl max-w-4xl w-full shadow-2xl max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex justify-between items-center mb-8 border-b border-gray-200 dark:border-gray-800 pb-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-orange-100 dark:bg-cyan-900/30 rounded-xl flex items-center justify-center overflow-hidden">
+                    {selectedSpecialProject.imageIcon ? (
+                      <img src={selectedSpecialProject.imageIcon} alt={selectedSpecialProject.title} className="w-full h-full object-cover scale-125" />
+                    ) : (
+                      <Icon icon={selectedSpecialProject.icon} className="w-6 h-6 text-orange-600 dark:text-cyan-400" />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white">
+                      {selectedSpecialProject.title}
+                    </h3>
+                    <p className="text-sm font-mono text-gray-500 dark:text-gray-400 uppercase tracking-widest mt-1">
+                      {selectedSpecialProject.platform} • {selectedSpecialProject.tech}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsSpecialProjectModalOpen(false)}
+                  className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white transition-colors"
+                >
+                  <Icon icon="hugeicons:cancel-01" className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="space-y-8">
+                <div>
+                  <h4 className="text-lg font-bold flex items-center gap-2 text-gray-900 dark:text-white mb-3">
+                    <Icon icon="hugeicons:alert-01" className="text-red-500" /> The Issue
+                  </h4>
+                  <p className="text-gray-700 dark:text-gray-300 leading-relaxed bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-100 dark:border-gray-800">
+                    {selectedSpecialProject.details.issue}
+                  </p>
+                </div>
+                
+                <div>
+                  <h4 className="text-lg font-bold flex items-center gap-2 text-gray-900 dark:text-white mb-3">
+                    <Icon icon="hugeicons:search-01" className="text-orange-500" /> Identification
+                  </h4>
+                  <p className="text-gray-700 dark:text-gray-300 leading-relaxed bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-100 dark:border-gray-800">
+                    {selectedSpecialProject.details.identification}
+                  </p>
+                </div>
+
+                <div>
+                  <h4 className="text-lg font-bold flex items-center gap-2 text-gray-900 dark:text-white mb-3">
+                    <Icon icon="hugeicons:tick-double-01" className="text-green-500" /> Resolution
+                  </h4>
+                  <p className="text-gray-700 dark:text-gray-300 leading-relaxed bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-100 dark:border-gray-800 mb-4">
+                    {selectedSpecialProject.details.resolution}
+                  </p>
+                  <div className="relative group">
+                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span className="px-3 py-1 bg-gray-800 text-xs text-gray-300 rounded font-mono">JS Template</span>
+                    </div>
+                    <pre className="bg-[#0d1117] text-[#c9d1d9] p-4 sm:p-6 rounded-xl overflow-x-auto text-xs sm:text-sm font-mono border border-gray-800 shadow-inner">
+                      <code>{selectedSpecialProject.details.code}</code>
+                    </pre>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8 flex justify-end">
+                <button
+                  onClick={() => setIsSpecialProjectModalOpen(false)}
+                  className="px-6 py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl hover:opacity-90 transition-opacity shadow-lg"
+                >
+                  Close Case Study
+                </button>
+              </div>
+            </m.div>
+          </m.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

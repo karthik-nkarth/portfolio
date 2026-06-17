@@ -115,24 +115,14 @@ const Home = () => {
   ];
 
   const testimonials = [
-    {
-      name: 'Jane Doe',
-      role: 'CEO, TechNova',
-      quote: "Karthik's lead generation strategy boosted our pipeline by 200% in just two quarters. Unbelievable results!",
-      full: "Working with Karthik transformed our entire marketing approach. His deep understanding of GTM and GA4 allowed us to track every interaction and optimize our campaigns in real-time. The 200% pipeline increase was just the beginning - our conversion rates improved by 45% and our cost per acquisition dropped significantly."
-    },
+
     {
       name: 'Mark Johnson',
       role: 'Founder, StyleUp',
       quote: "He completely transformed our e-commerce site, solving a huge abandonment issue with a clever A/B test.",
       full: "Our cart abandonment rate was at 78% before Karthik stepped in. Through meticulous A/B testing and conversion rate optimization, he identified the friction points and implemented solutions that brought our abandonment rate down to 32%. The revenue impact was immediate and substantial."
     },
-    {
-      name: 'Michael Ross',
-      role: 'Marketing Dir, GreenLife',
-      quote: "SEO traffic tripled in 6 months. His technical knowledge of Schema markup is unmatched.",
-      full: "Karthik's technical SEO expertise is exceptional. He implemented comprehensive Schema markup across our site, optimized our Core Web Vitals, and restructured our content strategy. The result? Organic traffic increased by 300% in just 6 months, and we now rank on page 1 for our target keywords."
-    },
+
     {
       name: 'Emily Blunt',
       role: 'Head of Comms, FinTech',
@@ -151,18 +141,8 @@ const Home = () => {
       quote: "His implementation of Server-Side GTM revolutionized our data collection. We now have 99.9% data accuracy.",
       full: "Before Karthik, we were losing 30% of our conversion data due to ad blockers and browser restrictions. His Server-Side GTM implementation solved this completely. We now have 99.9% data accuracy, which has transformed our attribution modeling and ROI calculations."
     },
-    {
-      name: 'Robert Williams',
-      role: 'VP Marketing, RetailMax',
-      quote: "The consent mode implementation was flawless. Zero compliance issues and 40% better conversion tracking.",
-      full: "GDPR compliance was a nightmare for us until Karthik stepped in. His Consent Mode V2 implementation was flawless - we passed every audit with flying colors. Plus, our conversion tracking improved by 40% compared to our previous setup."
-    },
-    {
-      name: 'Lisa Park',
-      role: 'Director, GrowthHub',
-      quote: "BigQuery integration gave us insights we never knew existed. Our data-driven decisions increased revenue by 150%.",
-      full: "Karthik's BigQuery integration work was transformative. He built custom dashboards that revealed insights we never knew existed. Our data-driven decision-making process increased revenue by 150% in the first year alone."
-    },
+
+
     {
       name: 'James Miller',
       role: 'Founder, StartupX',
@@ -196,7 +176,7 @@ const Home = () => {
       setCurrentPage((prev) => (prev + 1) % totalPages);
     }, 15000);
     return () => clearInterval(interval);
-  }, [totalPages]);
+  }, [totalPages, currentPage]);
 
   const currentTestimonials = allTestimonials.slice(
     currentPage * testimonialsPerPage,
