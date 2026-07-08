@@ -10,6 +10,7 @@ const Works = () => {
   const websites = [
     {
       image: '/pracy_logo.png',
+      bgImage: '/websites/pracy_bg.png',
       title: 'Pracy',
       platform: 'Shopify',
       url: 'https://www.pracy.in/',
@@ -18,6 +19,7 @@ const Works = () => {
     },
     {
       image: '/lindblom_logo.png',
+      bgImage: '/websites/lindblom_hypnotherapy_bg.png',
       title: 'Lindblom Hypnotherapy',
       platform: 'Squarespace',
       url: 'https://www.lindblomhypnotherapy.com.au/',
@@ -26,6 +28,7 @@ const Works = () => {
     },
     {
       image: 'https://www.google.com/s2/favicons?domain=autocraftmelbourne.com.au&sz=128',
+      bgImage: '/websites/autocraft_melbourne_bg.png',
       title: 'Autocraft Melbourne',
       platform: 'Wix',
       url: 'https://www.autocraftmelbourne.com.au/',
@@ -34,6 +37,7 @@ const Works = () => {
     },
     {
       image: '/healsway_logo.jpg',
+      bgImage: '/healsway_logo.jpg',
       title: 'Healsway',
       platform: 'Shopify',
       url: 'https://healsway.io/',
@@ -42,6 +46,7 @@ const Works = () => {
     },
     {
       image: 'https://www.google.com/s2/favicons?domain=australianhypnotherapycentre.com.au&sz=128',
+      bgImage: '/websites/australian_hypnotherapy_bg.png',
       title: 'Australian Hypnotherapy',
       platform: 'WordPress',
       url: 'https://australianhypnotherapycentre.com.au/',
@@ -50,6 +55,7 @@ const Works = () => {
     },
     {
       image: 'https://www.google.com/s2/favicons?domain=noatune.com&sz=128',
+      bgImage: '/websites/noatune_bg.png',
       title: 'Noatune',
       platform: 'Webflow',
       url: 'https://noatune.com/',
@@ -72,66 +78,36 @@ const Works = () => {
 
   const currentWebsites = websites.slice(currentPage * itemsPerPage, (currentPage + 1) * itemsPerPage);
 
-  const skills = [
+  const marketingAccounts = [
     {
-      icon: 'hugeicons:chart-histogram',
-      metric: '5,000+',
-      label: 'Measurement Implementations',
-      timeframe: '2023 – Present',
-      outcome: 'Global Scale',
-      detail: 'Enterprise-scale analytics solutions',
-      channel: 'Cognizant (Client: Google)',
-      category: 'Analytics'
+      icon: 'hugeicons:google',
+      metric: 'Google Ads',
+      label: 'E-commerce Retailer',
+      timeframe: 'Active',
+      outcome: '340% ROAS',
+      detail: 'Managed $50k/mo ad spend with high conversion rate.',
+      channel: 'Search & Shopping',
+      category: 'PPC'
     },
     {
-      icon: 'hugeicons:user-group',
-      metric: '2,000+',
-      label: 'Advertisers Supported',
-      timeframe: '2023 – Present',
-      outcome: 'Global Reach',
-      detail: 'Measurement strategy & implementation',
-      channel: 'Cognizant (Client: Google)',
-      category: 'Analytics'
+      icon: 'hugeicons:analytics-01',
+      metric: 'Google Analytics',
+      label: 'SaaS Platform',
+      timeframe: 'Completed',
+      outcome: 'Full GA4 Migration',
+      detail: 'Implemented custom event tracking and server-side tagging.',
+      channel: 'Web Analytics',
+      category: 'Data'
     },
     {
-      icon: 'hugeicons:education',
-      metric: '200+',
-      label: 'Training Hours Delivered',
-      timeframe: '2023 – Present',
-      outcome: 'Team Enablement',
-      detail: 'Agents, SMEs, clients, agencies',
-      channel: 'Cognizant (Client: Google)',
-      category: 'Training'
-    },
-    {
-      icon: 'hugeicons:shield-02',
-      metric: 'GDPR',
-      label: 'Compliance Solutions',
-      timeframe: '2023 – Present',
-      outcome: 'Consent Mode V2',
-      detail: 'Privacy-compliant measurement',
-      channel: 'Cognizant (Client: Google)',
-      category: 'Privacy'
-    },
-    {
-      icon: 'hugeicons:global-search',
-      metric: 'Multiple',
-      label: 'CDN Integrations',
-      timeframe: '2023 – Present',
-      outcome: 'Google Tag Gateway',
-      detail: 'Akamai, Cloudflare, Fastly, AWS, Webflow',
-      channel: 'Cognizant (Client: Google)',
-      category: 'Infrastructure'
-    },
-    {
-      icon: 'hugeicons:target-01',
-      metric: 'Advanced',
-      label: 'Attribution Modelling',
-      timeframe: '2023 – Present',
-      outcome: 'Data-Driven Attribution',
-      detail: 'CM360, SA360, Cross-platform analysis',
-      channel: 'Cognizant (Client: Google)',
-      category: 'Attribution'
+      icon: 'hugeicons:megaphone-01',
+      metric: 'Meta Ads',
+      label: 'Local Business',
+      timeframe: 'Active',
+      outcome: '5x Lead Volume',
+      detail: 'Hyper-local targeting and dynamic creative optimization.',
+      channel: 'Facebook & Instagram',
+      category: 'Social'
     }
   ];
 
@@ -172,7 +148,7 @@ window.addEventListener('load',function(){
             className="text-center mb-12 md:mb-16"
           >
             <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 dark:text-white mb-6">
-              My <span className="text-orange-600 dark:text-orange-400">Works</span>
+              My <span className="text-orange-600 dark:text-orange-400">Projects</span>
             </h1>
             <p className="text-base sm:text-lg md:text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto px-4">
               Proven results across digital marketing, analytics, and web development.
@@ -191,29 +167,36 @@ window.addEventListener('load',function(){
             <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-8">
               Websites I Have Built / Managed
             </h2>
-            <div className="grid sm:grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8 min-h-[450px]">
-              <AnimatePresence mode="popLayout">
-                {currentWebsites.map((project, index) => (
-                  <m.div
-                    key={project.title}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ duration: 0.4, delay: index * 0.1 }}
-                    whileHover={{ y: -5 }}
-                    className="relative bg-white/30 dark:bg-gray-900 rounded-[2rem] p-[2px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_0_20px_rgba(0,0,0,0.5)] group overflow-hidden transition-all hover:shadow-[0_0_30px_rgba(234,88,12,0.1)] dark:hover:shadow-[0_0_30px_rgba(59,130,246,0.2)] backdrop-blur-md"
-                  >
-                    {/* Background Orange Shade */}
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-orange-500/20 dark:bg-blue-500/10 blur-[50px] rounded-full pointer-events-none" />
+            <div className="relative min-h-[450px]">
+              <AnimatePresence mode="wait">
+                <m.div
+                  key={currentPage}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.5 }}
+                  className="grid sm:grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8"
+                >
+                  {currentWebsites.map((project) => (
+                    <m.div
+                      key={project.title}
+                      whileHover={{ y: -5 }}
+                      className="relative bg-white/10 dark:bg-gray-900/10 rounded-[2rem] p-[1px] shadow-[0_8px_30px_rgb(0,0,0,0.06)] dark:shadow-[0_0_20px_rgba(0,0,0,0.5)] group overflow-hidden transition-all hover:shadow-[0_0_40px_rgba(234,88,12,0.15)] dark:hover:shadow-[0_0_40px_rgba(59,130,246,0.3)] border border-gray-200/50 dark:border-gray-700/50"
+                    >
+                      {/* Blurred Website Background */}
+                      <div 
+                        className="absolute inset-0 bg-cover bg-top bg-no-repeat blur-[6px] opacity-80 group-hover:opacity-100 group-hover:blur-[2px] transition-all duration-700 scale-[1.05]"
+                        style={{ backgroundImage: `url(${project.bgImage || project.image})` }}
+                      />
+                      
+                      {/* Gradient Overlay for Text Readability */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-white via-white/95 to-white/40 dark:from-gray-950 dark:via-gray-950/95 dark:to-gray-950/40" />
 
-                    {/* Cyberpunk Animated Border Glow */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-orange-400 via-amber-300 to-orange-400 dark:from-blue-500 dark:via-cyan-400 dark:to-blue-500 opacity-0 group-hover:opacity-30 transition-opacity duration-500 rounded-[2rem]" />
-                    <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(255,255,255,0.1)_50%,transparent_75%,transparent_100%)] bg-[length:250%_250%,100%_100%] animate-[bg-pan_3s_linear_infinite] opacity-0 group-hover:opacity-30" />
+                      {/* Cyberpunk Animated Border Glow */}
+                      <div className="absolute inset-0 bg-gradient-to-r from-orange-400 via-amber-300 to-orange-400 dark:from-blue-500 dark:via-cyan-400 dark:to-blue-500 opacity-0 group-hover:opacity-20 transition-opacity duration-500 rounded-[2rem]" />
                     
                   {/* Inner Tech Card */}
-                  <div className="relative h-full bg-white/60 dark:bg-gray-950/90 rounded-[1.9rem] p-6 md:p-8 backdrop-blur-2xl border border-white/50 dark:border-gray-800 z-10 flex flex-col">
-                    {/* Tech grid overlay */}
-                    <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.03)_1px,transparent_1px)] dark:bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none rounded-[1.9rem]" />
+                  <div className="relative h-full rounded-[1.9rem] p-6 md:p-8 z-10 flex flex-col">
                     
                     <div className="flex items-center justify-between mb-8 relative z-20">
                       <div className="w-16 h-16 bg-white rounded-xl flex items-center justify-center p-2 shadow-[0_4px_15px_rgba(0,0,0,0.05)] dark:shadow-[0_0_15px_rgba(255,255,255,0.2)] group-hover:scale-110 transition-all duration-300 ring-1 ring-gray-100 dark:ring-white/10">
@@ -223,40 +206,41 @@ window.addEventListener('load',function(){
                           className={`w-full h-full object-contain ${project.image.endsWith('.jpg') || project.image.endsWith('.png') ? 'mix-blend-multiply dark:mix-blend-normal' : ''}`}
                         />
                       </div>
-                      <span className="px-4 py-1.5 bg-white/80 dark:bg-gray-900/80 border border-orange-200 dark:border-cyan-500/30 text-orange-600 dark:text-cyan-400 rounded-full text-xs font-mono font-bold uppercase tracking-widest shadow-sm">
+                      <span className="px-4 py-1.5 bg-white/80 dark:bg-gray-900/80 border border-orange-200 dark:border-cyan-500/30 text-orange-600 dark:text-cyan-400 rounded-full text-xs font-mono font-bold uppercase tracking-widest shadow-sm backdrop-blur-sm">
                         &lt;{project.category}/&gt;
                       </span>
                     </div>
 
                     <div className="mb-6 relative z-20 flex-grow">
-                      <h3 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-gray-900 to-gray-600 dark:from-gray-100 dark:to-gray-400 mb-3 tracking-tight drop-shadow-sm dark:drop-shadow-md">
+                      <h3 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 mb-3 tracking-tight drop-shadow-sm">
                         {project.title}
                       </h3>
                       <div className="flex items-center gap-2 mb-5">
                         <div className="w-2.5 h-2.5 rounded-full bg-orange-500 dark:bg-cyan-500 animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.8)] dark:shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
-                        <p className="text-sm font-mono font-bold text-gray-700 dark:text-gray-400 uppercase tracking-[0.15em]">
+                        <p className="text-sm font-mono font-bold text-gray-700 dark:text-gray-300 uppercase tracking-[0.15em]">
                           CMS: {project.platform}
                         </p>
                       </div>
-                      <p className="text-gray-800 dark:text-gray-300 leading-relaxed text-base font-medium">
+                      <p className="text-gray-800 dark:text-gray-200 leading-relaxed text-base font-medium">
                         {project.description}
                       </p>
                     </div>
 
-                    <div className="pt-6 border-t border-gray-200/60 dark:border-gray-800 relative z-20 flex items-center justify-between mt-auto">
+                    <div className="pt-6 relative z-20 flex justify-center mt-auto">
                       <a
                         href={project.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 text-gray-900 dark:text-white hover:text-orange-600 dark:hover:text-cyan-400 font-bold transition-all group/link tracking-wide text-base"
+                        className="inline-flex items-center justify-center gap-2 w-full px-6 py-3 bg-gray-900 hover:bg-orange-600 dark:bg-white dark:hover:bg-cyan-400 text-white dark:text-gray-900 font-bold rounded-xl transition-all group/link shadow-md hover:shadow-lg"
                       >
                         Visit Website
                         <Icon icon="hugeicons:arrow-up-right-01" className="w-5 h-5 group-hover/link:translate-x-1 group-hover/link:-translate-y-1 transition-transform" />
                       </a>
                     </div>
                   </div>
+                  </m.div>
+                ))}
                 </m.div>
-              ))}
               </AnimatePresence>
             </div>
 
@@ -306,7 +290,7 @@ window.addEventListener('load',function(){
             className="mt-20 mb-16 md:mb-20"
           >
             <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-8">
-              My Projects & Custom Solutions
+              My Custom Projects
             </h2>
             <div className="grid sm:grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
               {specialProjects.map((project, index) => (
@@ -320,17 +304,14 @@ window.addEventListener('load',function(){
                     setSelectedSpecialProject(project);
                     setIsSpecialProjectModalOpen(true);
                   }}
-                  className="relative bg-white/30 dark:bg-gray-900 rounded-[2rem] p-[2px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_0_20px_rgba(0,0,0,0.5)] group overflow-hidden transition-all hover:shadow-[0_0_30px_rgba(234,88,12,0.1)] dark:hover:shadow-[0_0_30px_rgba(59,130,246,0.2)] backdrop-blur-md cursor-pointer"
+                  className="relative bg-white/40 dark:bg-gray-900/60 rounded-[2rem] p-[1px] shadow-[0_8px_40px_rgb(0,0,0,0.06)] dark:shadow-[0_0_30px_rgba(0,0,0,0.6)] group overflow-hidden transition-all hover:-translate-y-2 hover:shadow-[0_20px_50px_rgba(234,88,12,0.15)] dark:hover:shadow-[0_20px_50px_rgba(59,130,246,0.25)] backdrop-blur-xl cursor-pointer border border-gray-200 dark:border-gray-800"
                 >
-                  {/* Background Orange Shade */}
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-orange-500/20 dark:bg-blue-500/10 blur-[50px] rounded-full pointer-events-none" />
-
-                  {/* Cyberpunk Animated Border Glow */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-orange-400 via-amber-300 to-orange-400 dark:from-blue-500 dark:via-cyan-400 dark:to-blue-500 opacity-0 group-hover:opacity-30 transition-opacity duration-500 rounded-[2rem]" />
+                  {/* Background Glow */}
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-orange-400/20 dark:bg-cyan-500/10 blur-[60px] rounded-full pointer-events-none group-hover:bg-orange-500/30 dark:group-hover:bg-cyan-400/20 transition-all duration-700" />
                   
-                  {/* Inner Tech Card */}
-                  <div className="relative h-full bg-white/60 dark:bg-gray-950/90 rounded-[1.9rem] p-6 md:p-8 backdrop-blur-2xl border border-white/50 dark:border-gray-800 z-10 flex flex-col">
-                    <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.03)_1px,transparent_1px)] dark:bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none rounded-[1.9rem]" />
+                  {/* Inner Premium Card */}
+                  <div className="relative h-full bg-white/70 dark:bg-gray-950/80 rounded-[1.9rem] p-8 md:p-10 z-10 flex flex-col">
+                    <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.02)_1px,transparent_1px)] dark:bg-[linear-gradient(rgba(255,255,255,0.015)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.015)_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none rounded-[1.9rem]" />
                     
                     <div className="flex items-center justify-between mb-8 relative z-20">
                       <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900 rounded-xl flex items-center justify-center p-2 shadow-[0_4px_15px_rgba(0,0,0,0.05)] dark:shadow-[0_0_15px_rgba(255,255,255,0.1)] group-hover:scale-110 transition-all duration-300 ring-1 ring-gray-200 dark:ring-white/10">
@@ -381,59 +362,59 @@ window.addEventListener('load',function(){
             transition={{ duration: 0.6 }}
           >
             <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-8">
-              My Skills and Services
+              Digital Marketing & Analytics
             </h2>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
-              {skills.map((skill, index) => (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
+              {marketingAccounts.map((account, index) => (
                 <m.div
                   key={index}
                   initial={{ opacity: 0, y: 30 }}
-                  animate={{ opacity: 1, y: 0 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
                   transition={{ duration: 0.5, delay: index * 0.1 }}
-                  whileHover={{ scale: 1.03, y: -5 }}
-                  className="bg-white dark:bg-gray-800 rounded-2xl p-4 md:p-8 shadow-lg hover:shadow-2xl transition-all group"
+                  whileHover={{ scale: 1.02, y: -5 }}
+                  className="bg-white/60 dark:bg-gray-900/60 rounded-[2rem] p-[1px] shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:shadow-[0_20px_40px_rgba(234,88,12,0.1)] dark:hover:shadow-[0_20px_40px_rgba(6,182,212,0.15)] transition-all group border border-gray-200 dark:border-gray-800 backdrop-blur-xl relative overflow-hidden"
                 >
-                  <div className="flex items-center justify-between mb-4 md:mb-6">
-                    <div className="w-12 h-12 md:w-14 md:h-14 bg-gradient-to-br from-orange-500 to-orange-600 dark:from-blue-500 dark:to-blue-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <Icon icon={skill.icon} className="w-6 h-6 md:w-7 md:h-7 text-white" />
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-orange-400/10 dark:bg-cyan-500/10 blur-[40px] rounded-full pointer-events-none group-hover:scale-150 transition-transform duration-700" />
+                  
+                  <div className="relative h-full bg-white/70 dark:bg-gray-950/80 rounded-[1.9rem] p-6 md:p-8 z-10 flex flex-col">
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="w-14 h-14 bg-gradient-to-br from-orange-50 to-orange-100 dark:from-gray-800 dark:to-gray-900 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm border border-orange-200/50 dark:border-gray-700">
+                        <Icon icon={account.icon} className="w-7 h-7 text-orange-600 dark:text-cyan-400" />
+                      </div>
+                      <span className="px-3 py-1 bg-orange-50 dark:bg-cyan-900/20 border border-orange-200 dark:border-cyan-800/50 text-orange-600 dark:text-cyan-400 rounded-full text-xs font-bold uppercase tracking-wider">
+                        {account.category}
+                      </span>
                     </div>
-                    <span className="px-2 md:px-3 py-1 bg-orange-100 dark:bg-blue-900/30 text-orange-600 dark:text-blue-400 rounded-full text-xs md:text-sm font-medium">
-                      {skill.category}
-                    </span>
-                  </div>
 
-                  <div className="mb-4 md:mb-6">
-                    <p className="text-3xl sm:text-4xl md:text-5xl font-bold text-orange-600 dark:text-orange-400 mb-2">
-                      {skill.metric}
-                    </p>
-                    <p className="text-sm md:text-base text-gray-600 dark:text-gray-400 font-medium">
-                      {skill.label}
-                    </p>
-                  </div>
+                    <div className="mb-6">
+                      <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-1 tracking-tight">
+                        {account.metric}
+                      </h3>
+                      <p className="text-orange-600 dark:text-cyan-400 font-medium">
+                        {account.label}
+                      </p>
+                    </div>
 
-                  <div className="space-y-2 md:space-y-3 mb-4 md:mb-6">
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-500 dark:text-gray-500 text-xs md:text-sm">Timeframe:</span>
-                      <span className="text-gray-900 dark:text-white text-xs md:text-sm font-medium">{skill.timeframe}</span>
+                    <div className="space-y-3 mb-6 flex-grow">
+                      <div className="flex items-center gap-3">
+                        <div className="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600" />
+                        <span className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">{account.detail}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-2 h-2 rounded-full bg-orange-400 dark:bg-cyan-500" />
+                        <span className="text-gray-900 dark:text-white text-sm font-semibold">{account.outcome}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-500 dark:text-gray-500 text-xs md:text-sm">Outcome:</span>
-                      <span className="text-gray-900 dark:text-white text-xs md:text-sm font-medium">{skill.outcome}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-500 dark:text-gray-500 text-xs md:text-sm">Detail:</span>
-                      <span className="text-gray-900 dark:text-white text-xs md:text-sm font-medium">{skill.detail}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-500 dark:text-gray-500 text-xs md:text-sm">Channel:</span>
-                      <span className="text-gray-900 dark:text-white text-xs md:text-sm font-medium">{skill.channel}</span>
-                    </div>
-                  </div>
 
-                  <div className="pt-4 md:pt-6 border-t border-gray-200 dark:border-gray-700">
-                    <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">
-                      Delivered measurable results through strategic implementation
-                    </p>
+                    <div className="pt-5 border-t border-gray-200 dark:border-gray-800 flex justify-between items-center mt-auto">
+                      <span className="text-xs font-mono text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        {account.channel}
+                      </span>
+                      <span className={`text-xs font-bold px-2 py-1 rounded-md ${account.timeframe === 'Active' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>
+                        {account.timeframe}
+                      </span>
+                    </div>
                   </div>
                 </m.div>
               ))}
