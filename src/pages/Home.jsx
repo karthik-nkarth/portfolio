@@ -167,6 +167,21 @@ const Home = () => {
       .catch(console.error);
   }, []);
 
+  useEffect(() => {
+    if (window.location.search.includes('add_review')) {
+      setIsReviewModalOpen(true);
+      setTimeout(() => {
+        const reviewsSection = document.getElementById('reviews');
+        if (reviewsSection) {
+          reviewsSection.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 500);
+      
+      // Clean up the URL to keep it neat
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
   const allTestimonials = [...dynamicTestimonials, ...testimonials];
   const testimonialsPerPage = 3;
   const totalPages = Math.ceil(allTestimonials.length / testimonialsPerPage);
@@ -502,7 +517,7 @@ const Home = () => {
       <JourneyTimeline />
       <FreelanceServices />
 
-      <section className="py-20 px-6 bg-gradient-to-b from-transparent to-orange-50 dark:to-blue-900/20">
+      <section id="reviews" className="py-20 px-6 bg-gradient-to-b from-transparent to-orange-50 dark:to-blue-900/20">
         <div className="max-w-7xl mx-auto">
           <m.h2
             initial={{ opacity: 0, y: 20 }}
