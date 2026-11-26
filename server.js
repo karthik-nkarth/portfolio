@@ -15,6 +15,7 @@ import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import bcrypt from 'bcrypt';
+import { createAuctionRouter } from './auction/routes.js';
 
 dotenv.config();
 
@@ -55,6 +56,7 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '50mb' }));
 app.use(cookieParser());
 app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
+app.use('/api/auction', createAuctionRouter(() => db));
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',

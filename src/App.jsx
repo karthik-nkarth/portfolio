@@ -13,6 +13,7 @@ import './index.css';
 const Home = React.lazy(() => import('./pages/Home'));
 const Works = React.lazy(() => import('./pages/Works'));
 const Contact = React.lazy(() => import('./pages/Contact'));
+const AuctionGame = React.lazy(() => import('./pages/AuctionGame'));
 
 // Admin Pages
 const AdminLayout = React.lazy(() => import('./components/admin/AdminLayout'));
@@ -46,6 +47,7 @@ function App() {
                 <Route path="/" element={<><Navbar /><Home /><Footer /><FloatingButtons /></>} />
                 <Route path="/works" element={<><Navbar /><Works /><Footer /><FloatingButtons /></>} />
                 <Route path="/contact" element={<><Navbar /><Contact /><Footer /><FloatingButtons /></>} />
+                <Route path="/auction_game" element={<AuctionGame />} />
                 
                 {/* Admin Routes (No Navbar/Footer) */}
                 <Route path="/admin" element={<AdminLogin />} />
