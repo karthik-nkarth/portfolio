@@ -8,7 +8,7 @@ const MAX_OVERSEAS = 4;
 const MIN_RESERVE_PER_SLOT = 300;
 const IDLE_TIMER_MS = 120000;
 const BID_TIMER_MS = 10000;
-const BID_GRACE_MS = 1200;
+const BID_GRACE_MS = 2500;
 const LOT_RESULT_PAUSE_MS = 3300;
 const COLLECTION = 'auction_rooms';
 
@@ -603,7 +603,7 @@ export function createAuctionService(getDb) {
       if (!existing && cleanName) {
         existing = room.teams.find((t) => t.name.toLowerCase() === cleanName.toLowerCase() && !t.quit);
       }
-      if (existing && (reconnectToken === existing.id || room.phase === 'LOBBY')) {
+      if (existing) {
         assignedTeamId = existing.id;
         return { noBump: true };
       }

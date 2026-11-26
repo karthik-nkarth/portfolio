@@ -19,11 +19,17 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.ag-quit-fab {
+.ag-bottom-left {
   position: fixed;
   bottom: 14px;
   left: 14px;
   z-index: 65;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ag-quit-fab {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -39,6 +45,18 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 .ag-quit-fab:hover { background: rgba(239, 68, 68, 0.22); }
+
+.ag-version-pill {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid var(--border);
+  color: #94a3b8;
+  font-family: ui-monospace, monospace;
+  font-size: 0.74rem;
+  font-weight: 700;
+  backdrop-filter: blur(8px);
+}
 
 .ag-root * { box-sizing: border-box; }
 
@@ -348,6 +366,40 @@
   display: flex; align-items: center; justify-content: center; padding: 16px;
 }
 
+.ag-plus-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  background: rgba(56, 189, 248, 0.14);
+  color: #7dd3fc;
+  font-weight: 800;
+  font-size: 0.9rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.ag-plus-btn:active { transform: scale(0.92); }
+
+.ag-lr-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+.ag-lr-chip {
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
 @media (max-width: 1024px) {
   .ag-auction-grid { grid-template-columns: 1fr; }
   .ag-teams-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
@@ -357,13 +409,135 @@
 @media (max-width: 768px) {
   .ag-auth-grid { grid-template-columns: 1fr; }
   .ag-rules-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .ag-topbar { flex-wrap: wrap; padding: 8px 12px; }
-  .ag-mob-tabs { display: flex; }
-  .ag-inspector { display: none; }
-  .ag-teams-strip { display: flex; flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
-  .ag-team-tile { min-width: 170px; }
-  .ag-stats-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .ag-bid-row { grid-template-columns: 1fr auto; }
-  .ag-skip-btn { grid-column: span 2; }
   .ag-role-grid { grid-template-columns: 1fr; }
+
+  .ag-root.ag-in-auction {
+    height: 100dvh;
+    min-height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 0;
+  }
+
+  .ag-root.ag-in-auction .ag-topbar {
+    flex-wrap: wrap;
+    padding: 5px 10px;
+    gap: 4px 8px;
+  }
+  .ag-root.ag-in-auction .ag-creds { padding: 3px 7px; font-size: 0.7rem; gap: 5px; }
+  .ag-root.ag-in-auction .ag-round-pill { font-size: 0.66rem; padding: 3px 8px; }
+  .ag-root.ag-in-auction .ag-purse-pill { font-size: 0.72rem; padding: 3px 8px; gap: 5px; }
+  .ag-root.ag-in-auction .ag-icon-btn { width: 28px; height: 28px; font-size: 0.82rem; }
+
+  .ag-root.ag-in-auction .ag-mob-tabs { display: none; }
+  .ag-root.ag-in-auction .ag-inspector { display: none; }
+  .ag-root.ag-in-auction .ag-rail-heading { display: none; }
+
+  .ag-root.ag-in-auction .ag-auction-grid {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 6px 8px 34px;
+    gap: 6px;
+    overflow: hidden;
+  }
+
+  .ag-root.ag-in-auction .ag-rail { flex-shrink: 0; gap: 0; }
+  .ag-root.ag-in-auction .ag-teams-strip {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 6px;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+  .ag-root.ag-in-auction .ag-teams-strip::-webkit-scrollbar { display: none; }
+  .ag-root.ag-in-auction .ag-team-tile {
+    min-width: 126px;
+    padding: 5px 8px;
+    border-radius: 10px;
+    gap: 6px;
+  }
+  .ag-root.ag-in-auction .ag-avatar { width: 26px; height: 26px; }
+  .ag-root.ag-in-auction .ag-avatar svg { width: 14px; height: 14px; }
+
+  .ag-root.ag-in-auction .ag-stage {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: stretch;
+  }
+
+  .ag-root.ag-in-auction .ag-game-card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-radius: 14px;
+    max-width: 100%;
+    min-height: 0;
+  }
+
+  .ag-root.ag-in-auction .ag-card-face {
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    border-radius: 12px;
+  }
+  .ag-root.ag-in-auction .ag-card-top { margin-bottom: 6px; }
+  .ag-root.ag-in-auction .ag-pill { font-size: 0.6rem; padding: 2px 7px; }
+
+  .ag-root.ag-in-auction .ag-centerpiece {
+    flex-direction: row;
+    text-align: left;
+    gap: 10px;
+    margin: 2px 0 8px;
+  }
+  .ag-root.ag-in-auction .ag-portrait {
+    width: 62px;
+    height: 62px;
+    border-radius: 14px;
+    margin-bottom: 0;
+    border-width: 2px;
+  }
+  .ag-root.ag-in-auction .ag-player-name { font-size: 1.15rem; margin-bottom: 2px; }
+  .ag-root.ag-in-auction .ag-muted { font-size: 0.74rem; line-height: 1.25; }
+
+  .ag-root.ag-in-auction .ag-stats-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .ag-root.ag-in-auction .ag-stat-box { padding: 4px 2px; border-radius: 7px; }
+  .ag-root.ag-in-auction .ag-stat-box span { font-size: 0.55rem; }
+  .ag-root.ag-in-auction .ag-stat-box strong { font-size: 0.76rem; }
+
+  .ag-root.ag-in-auction .ag-bidding-box { padding: 7px 10px; margin-bottom: 6px; border-radius: 11px; }
+  .ag-root.ag-in-auction .ag-bid-figures { margin-bottom: 5px; gap: 6px; }
+  .ag-root.ag-in-auction .ag-timer-track { height: 7px; }
+
+  .ag-root.ag-in-auction .ag-bid-buttons-grid {
+    grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+    gap: 5px;
+    margin-bottom: 4px;
+  }
+  .ag-root.ag-in-auction .ag-bid-step-btn { padding: 7px 4px; font-size: 0.82rem; border-radius: 9px; }
+  .ag-root.ag-in-auction .ag-bid-step-btn span { font-size: 0.64rem; }
+  .ag-root.ag-in-auction .ag-btn-danger-outline { padding: 7px 6px; font-size: 0.8rem; border-radius: 9px; }
+
+  .ag-root.ag-in-auction .ag-bottom-left {
+    bottom: 5px;
+    left: 8px;
+    gap: 5px;
+  }
+  .ag-root.ag-in-auction .ag-quit-fab {
+    padding: 4px 10px;
+    font-size: 0.72rem;
+  }
+  .ag-root.ag-in-auction .ag-version-pill {
+    padding: 4px 8px;
+    font-size: 0.68rem;
+  }
 }

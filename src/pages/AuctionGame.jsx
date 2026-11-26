@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './AuctionGame.css';
 
+const APP_VERSION = 'v1.0';
 const formatINR = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
 
 function formatClock(ms) {
@@ -121,7 +122,9 @@ function AuctionGameInner() {
   const [bidErr, setBidErr] = useState('');
   const [roleErr, setRoleErr] = useState('');
   const [inspectedId, setInspectedId] = useState(null);
-  const [modalTeam, setModalTeam] = useState(null);
+  const [modalTeamId, setModalTeamId] = useState(null);
+  const [inspectedPlayer, setInspectedPlayer] = useState(null);
+  const [pingMs, setPingMs] = useState(null);
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [mobTab, setMobTab] = useState('stage');
   const [soundOn, setSoundOn] = useState(true);
@@ -138,11 +141,13 @@ function AuctionGameInner() {
   const lastOutcomeKeyRef = useRef(null);
   const lastBeepSecRef = useRef(null);
   const versionRef = useRef(state?.version || 0);
+  const initialSyncDoneRef = useRef(false);
   const mutatingRef = useRef(false);
   const serverOffsetRef = useRef(0);
   const guardActiveRef = useRef(false);
 
   function syncClock(serverNow, reqStartMs, reqEndMs) {
+    setPingMs(Math.max(1, reqEndMs - reqStartMs));
     if (!serverNow) return;
     const midpoint = (reqStartMs + reqEndMs) / 2;
     const sampleOffset = serverNow - midpoint;
@@ -329,9 +334,10 @@ function AuctionGameInner() {
       if (!alive) return;
       if (mutatingRef.current) return scheduleNext(400);
       const t0 = Date.now();
+      const queryV = initialSyncDoneRef.current ? versionRef.current : 0;
       try {
         const res = await fetch(
-          `/api/auction/state?roomId=${encodeURIComponent(roomId)}&teamId=${encodeURIComponent(teamId)}&v=${versionRef.current}`
+          `/api/auction/state?roomId=${encodeURIComponent(roomId)}&teamId=${encodeURIComponent(teamId)}&v=${queryV}`
         );
         if (res.status === 404) {
           setReconnecting(true);
@@ -346,10 +352,11 @@ function AuctionGameInner() {
           return scheduleNext(Math.min(6000, 1500 * failCount));
         }
         failCount = 0;
+        initialSyncDoneRef.current = true;
         setReconnecting(false);
         if (data.state?.serverNow) syncClock(data.state.serverNow, t0, t1);
         if (!data.unchanged && data.state) {
-          applyNewState(data.state);
+          applyNewState(data.state, null, queryV === 0);
         }
         scheduleNext();
       } catch {
@@ -660,6 +667,9 @@ function AuctionGameInner() {
             <div className="ag-rule-chip"><strong>12 Metrics</strong><span>L/R + All-Rounder</span></div>
           </section>
         </div>
+        <div className="ag-bottom-left">
+          <span className="ag-version-pill">{APP_VERSION}</span>
+        </div>
       </div>
     );
   }
@@ -703,8 +713,19 @@ function AuctionGameInner() {
   }
   quickButtons.push({ label: '+₹1,000', val: baseOrCurrent + 1000 });
 
+  const inAuctionView = state.phase === 'AUCTION' || state.phase === 'LOT_RESULT';
+  const modalTeam = modalTeamId ? state.teams.find((t) => t.id === modalTeamId) : null;
+
+  function summarizeLR(squad = []) {
+    const lhb = squad.filter((x) => x.battingStyle === 'LHB').length;
+    const rhb = squad.filter((x) => x.battingStyle === 'RHB').length;
+    const lArm = squad.filter((x) => /left-arm|slow left/i.test(x.bowlingStyle || '')).length;
+    const rArm = squad.filter((x) => x.bowlingStyle && x.bowlingStyle !== 'None' && !/left-arm|slow left/i.test(x.bowlingStyle)).length;
+    return { lhb, rhb, lArm, rArm };
+  }
+
   return (
-    <div className="ag-root">
+    <div className={`ag-root ${inAuctionView ? 'ag-in-auction' : ''}`}>
       <canvas ref={confettiRef} className="ag-confetti" />
 
       <header className="ag-topbar">
@@ -755,6 +776,11 @@ function AuctionGameInner() {
               <span>•</span>
               <span>OS <strong>{me.overseasCount}/4</strong></span>
             </div>
+          )}
+          {pingMs !== null && (
+            <span className="ag-muted-xs" style={{ fontFamily: 'ui-monospace, monospace', color: pingMs < 450 ? '#6ee7b7' : '#fbbf24' }}>
+              {pingMs}ms
+            </span>
           )}
           <button type="button" className="ag-icon-btn" onClick={() => setSoundOn((s) => !s)} title="Toggle Sound">
             {soundOn ? '🔊' : '🔇'}
@@ -842,8 +868,8 @@ function AuctionGameInner() {
 
       {(state.phase === 'AUCTION' || state.phase === 'LOT_RESULT') && p && (
         <section className="ag-auction-grid">
-          <aside className="ag-rail" style={{ display: window.innerWidth <= 768 && mobTab === 'mysquad' ? 'none' : undefined }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <aside className="ag-rail">
+            <div className="ag-rail-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
               <h3 style={{ margin: 0, fontSize: '1rem' }}>Live Franchises &amp; Purses</h3>
               <span className="ag-muted-xs">Tap any team to inspect</span>
             </div>
@@ -857,20 +883,20 @@ function AuctionGameInner() {
                     className={`ag-team-tile ${leading ? 'is-leading' : ''} ${t.skippedCurrent ? 'is-skipped' : ''} ${inspected?.id === t.id ? 'is-inspected' : ''}`}
                     onClick={() => {
                       setInspectedId(t.id);
-                      if (window.innerWidth <= 1024) setModalTeam(t);
+                      if (window.innerWidth <= 1024) setModalTeamId(t.id);
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
                       <AvatarIcon color={t.theme.color} isHost={t.isHost} />
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.84rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {t.name} {t.id === teamId ? '★' : ''}
                         </div>
                         <div className="ag-muted-xs">{t.quit ? 'QUIT' : `${t.squadCount}/12 • OS ${t.overseasCount}/4`}</div>
                       </div>
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, fontSize: '0.88rem', color: '#6ee7b7' }}>{formatINR(t.purse)}</div>
+                      <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, fontSize: '0.82rem', color: '#6ee7b7' }}>{formatINR(t.purse)}</div>
                       {t.quit ? (
                         <span className="ag-skip-badge">LEFT</span>
                       ) : t.skippedCurrent ? (
@@ -892,14 +918,28 @@ function AuctionGameInner() {
                   <strong>{inspected.name}</strong>
                   <span className="ag-muted-xs">{inspected.squadCount}/12 • {formatINR(inspected.purse)} left</span>
                 </div>
+                {inspected.squad.length > 0 && (() => {
+                  const s = summarizeLR(inspected.squad);
+                  return (
+                    <div className="ag-lr-summary">
+                      <span className="ag-lr-chip">LHB: {s.lhb} • RHB: {s.rhb}</span>
+                      <span className="ag-lr-chip">L-Arm: {s.lArm} • R-Arm: {s.rArm}</span>
+                    </div>
+                  );
+                })()}
                 <div className="ag-inspector-list">
                   {inspected.squad.length === 0 ? (
                     <span className="ag-muted-xs">No players drafted yet.</span>
                   ) : (
                     inspected.squad.map((sp) => (
                       <div key={sp.id} className="ag-squad-row">
-                        <span>{sp.name} <span className="ag-muted-xs">({sp.role})</span></span>
-                        <strong style={{ color: '#fbbf24', fontFamily: 'ui-monospace, monospace' }}>{formatINR(sp.boughtPrice)}</strong>
+                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {sp.name} <span className="ag-muted-xs">({sp.role})</span>
+                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                          <strong style={{ color: '#fbbf24', fontFamily: 'ui-monospace, monospace' }}>{formatINR(sp.boughtPrice)}</strong>
+                          <button type="button" className="ag-plus-btn" title={`View ${sp.name} stats`} onClick={() => setInspectedPlayer(sp)}>+</button>
+                        </div>
                       </div>
                     ))
                   )}
@@ -908,22 +948,7 @@ function AuctionGameInner() {
             )}
           </aside>
 
-          {mobTab === 'mysquad' && me ? (
-            <div className="ag-card" style={{ padding: 16 }}>
-              <h3 style={{ margin: '0 0 10px' }}>{me.name} — My Squad ({me.squadCount}/12)</h3>
-              {me.squad.length === 0 ? (
-                <p className="ag-muted">No players drafted yet.</p>
-              ) : (
-                me.squad.map((sp) => (
-                  <div key={sp.id} className="ag-squad-row" style={{ marginBottom: 6 }}>
-                    <span>{sp.name} ({sp.role})</span>
-                    <strong style={{ color: '#fbbf24' }}>{formatINR(sp.boughtPrice)}</strong>
-                  </div>
-                ))
-              )}
-            </div>
-          ) : (
-            <main className="ag-stage" style={{ display: window.innerWidth <= 768 && mobTab !== 'stage' ? 'none' : undefined }}>
+          <main className="ag-stage">
               <div className="ag-card ag-game-card">
                 {state.phase === 'LOT_RESULT' && state.lastLotOutcome && (
                   <div className="ag-overlay">
@@ -955,9 +980,11 @@ function AuctionGameInner() {
                     <div className="ag-portrait">
                       <img src={`/api/auction/player-image/${encodeURIComponent(p.id)}`} alt={p.name} />
                     </div>
-                    <h2 className="ag-player-name">{p.name}</h2>
-                    <div className="ag-muted">
-                      {p.country} • {p.battingStyle}{p.bowlingStyle && p.bowlingStyle !== 'None' ? ` • ${p.bowlingStyle}` : ''}
+                    <div>
+                      <h2 className="ag-player-name">{p.name}</h2>
+                      <div className="ag-muted">
+                        {p.country} • {p.battingStyle}{p.bowlingStyle && p.bowlingStyle !== 'None' ? ` • ${p.bowlingStyle}` : ''}
+                      </div>
                     </div>
                   </div>
 
@@ -1030,15 +1057,14 @@ function AuctionGameInner() {
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: '#94a3b8', marginBottom: 6 }}>
-                  <span>Bids on lot: <strong style={{ color: '#fbbf24' }}>{bidCount}</strong></span>
-                  {me && <span style={{ fontFamily: 'ui-monospace, monospace' }}>Max Bid: {formatINR(me.maxBidAllowed)}</span>}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', fontSize: '0.72rem', color: '#94a3b8', gap: 10 }}>
+                  <span>Bids: <strong style={{ color: '#fbbf24' }}>{bidCount}</strong></span>
+                  {me && <span style={{ fontFamily: 'ui-monospace, monospace' }}>Max: {formatINR(me.maxBidAllowed)}</span>}
                 </div>
 
                 {bidErr && <div className="ag-error">{bidErr}</div>}
               </div>
             </main>
-          )}
         </section>
       )}
 
@@ -1182,9 +1208,12 @@ function AuctionGameInner() {
         </section>
       )}
 
-      <button type="button" className="ag-quit-fab" onClick={() => setShowQuitModal(true)}>
-        ✕ Quit
-      </button>
+      <div className="ag-bottom-left">
+        <button type="button" className="ag-quit-fab" onClick={() => setShowQuitModal(true)}>
+          ✕ Quit
+        </button>
+        <span className="ag-version-pill">{APP_VERSION}</span>
+      </div>
 
       {showQuitModal && (
         <div className="ag-modal-bg" onClick={() => setShowQuitModal(false)}>
@@ -1204,28 +1233,86 @@ function AuctionGameInner() {
       )}
 
       {modalTeam && (
-        <div className="ag-modal-bg" onClick={() => setModalTeam(null)}>
+        <div className="ag-modal-bg" onClick={() => setModalTeamId(null)}>
           <div className="ag-card" style={{ maxWidth: 500, width: '100%', maxHeight: '80vh', padding: 18, overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <div>
                 <h3 style={{ margin: 0 }}>{modalTeam.name}</h3>
                 <span className="ag-muted-xs">{modalTeam.squadCount}/12 • OS {modalTeam.overseasCount}/4 • {formatINR(modalTeam.purse)} left</span>
               </div>
-              <button type="button" className="ag-icon-btn" onClick={() => setModalTeam(null)}>✕</button>
+              <button type="button" className="ag-icon-btn" onClick={() => setModalTeamId(null)}>✕</button>
             </div>
+            {modalTeam.squad.length > 0 && (() => {
+              const s = summarizeLR(modalTeam.squad);
+              return (
+                <div className="ag-lr-summary" style={{ marginBottom: 10 }}>
+                  <span className="ag-lr-chip">LHB: {s.lhb} • RHB: {s.rhb}</span>
+                  <span className="ag-lr-chip">L-Arm: {s.lArm} • R-Arm: {s.rArm}</span>
+                </div>
+              );
+            })()}
             {modalTeam.squad.length === 0 ? (
               <p className="ag-muted">No players bought yet.</p>
             ) : (
               modalTeam.squad.map((sp) => (
                 <div key={sp.id} className="ag-squad-row" style={{ marginBottom: 6 }}>
-                  <span>{sp.name} ({sp.role})</span>
-                  <strong style={{ color: '#fbbf24' }}>{formatINR(sp.boughtPrice)}</strong>
+                  <span>{sp.name} <span className="ag-muted-xs">({sp.role})</span></span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <strong style={{ color: '#fbbf24' }}>{formatINR(sp.boughtPrice)}</strong>
+                    <button type="button" className="ag-plus-btn" onClick={() => setInspectedPlayer(sp)}>+</button>
+                  </div>
                 </div>
               ))
             )}
           </div>
         </div>
       )}
+
+      {inspectedPlayer && (() => {
+        const st = liveStatsMap[inspectedPlayer.id]?.stats || inspectedPlayer.stats;
+        const batLabel = inspectedPlayer.battingStyle === 'LHB' ? 'Left-Hand Bat (LHB)' : 'Right-Hand Bat (RHB)';
+        const bowlLabel = inspectedPlayer.bowlingStyle && inspectedPlayer.bowlingStyle !== 'None' ? inspectedPlayer.bowlingStyle : 'Non-Bowler';
+        return (
+          <div className="ag-modal-bg" style={{ zIndex: 95 }} onClick={() => setInspectedPlayer(null)}>
+            <div className="ag-card ag-game-card" style={{ maxWidth: 420, width: '100%' }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <span className="ag-pill ag-pill-era">{inspectedPlayer.era}</span>
+                  <span className={`ag-pill ${inspectedPlayer.isOverseas ? 'ag-pill-os' : 'ag-pill-ind'}`}>
+                    {inspectedPlayer.isOverseas ? `OS (${inspectedPlayer.country})` : 'INDIAN'}
+                  </span>
+                </div>
+                <button type="button" className="ag-icon-btn" onClick={() => setInspectedPlayer(null)}>✕</button>
+              </div>
+              <div className="ag-card-face" style={{ marginBottom: 0 }}>
+                <div className="ag-spotlight" />
+                <div className="ag-centerpiece">
+                  <div className="ag-portrait" style={{ width: 96, height: 96 }}>
+                    <img src={`/api/auction/player-image/${encodeURIComponent(inspectedPlayer.id)}`} alt={inspectedPlayer.name} />
+                  </div>
+                  <h2 className="ag-player-name" style={{ fontSize: '1.4rem' }}>{inspectedPlayer.name}</h2>
+                  <div className="ag-muted" style={{ marginBottom: 6 }}>{inspectedPlayer.role} • {inspectedPlayer.country}</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 6, marginBottom: 8 }}>
+                    <span className="ag-lr-chip" style={{ color: '#fde68a' }}>{batLabel}</span>
+                    <span className="ag-lr-chip" style={{ color: '#7dd3fc' }}>{bowlLabel}</span>
+                    {inspectedPlayer.boughtPrice ? (
+                      <span className="ag-lr-chip" style={{ color: '#6ee7b7' }}>Drafted {formatINR(inspectedPlayer.boughtPrice)}</span>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="ag-stats-grid">
+                  <div className="ag-stat-box"><span>MAT</span><strong>{st?.matches || '-'}</strong></div>
+                  <div className="ag-stat-box"><span>RUNS</span><strong>{st?.runs || '-'}</strong></div>
+                  <div className="ag-stat-box"><span>SR</span><strong>{st?.strikeRate ? Number(st.strikeRate).toFixed(1) : '-'}</strong></div>
+                  <div className="ag-stat-box"><span>AVG</span><strong>{st?.average ? Number(st.average).toFixed(1) : '-'}</strong></div>
+                  <div className="ag-stat-box"><span>WKTS</span><strong>{st?.wickets || '-'}</strong></div>
+                  <div className="ag-stat-box"><span>ECON</span><strong>{st?.economy ? Number(st.economy).toFixed(2) : '-'}</strong></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
