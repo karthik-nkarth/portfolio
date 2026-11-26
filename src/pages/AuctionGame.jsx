@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './AuctionGame.css';
 
-const APP_VERSION = 'v1.0';
+const APP_VERSION = 'v1.1';
 const formatINR = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
 
 function formatClock(ms) {
@@ -339,12 +339,22 @@ function AuctionGameInner() {
         const res = await fetch(
           `/api/auction/state?roomId=${encodeURIComponent(roomId)}&teamId=${encodeURIComponent(teamId)}&v=${queryV}`
         );
+        const data = await res.json().catch(() => ({}));
+        const t1 = Date.now();
         if (res.status === 404) {
+          if (data?.expired) {
+            clearSavedGame();
+            if (alive) {
+              setState(null);
+              setRoomId(null);
+              setTeamId(null);
+              setLandingErr('Previous auction room expired due to inactivity.');
+            }
+            return;
+          }
           setReconnecting(true);
           return scheduleNext(4000);
         }
-        const data = await res.json();
-        const t1 = Date.now();
         if (!alive || mutatingRef.current) return scheduleNext();
         if (!res.ok || !data.ok) {
           failCount += 1;

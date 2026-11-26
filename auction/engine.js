@@ -10,6 +10,9 @@ const IDLE_TIMER_MS = 120000;
 const BID_TIMER_MS = 10000;
 const BID_GRACE_MS = 2500;
 const LOT_RESULT_PAUSE_MS = 3300;
+const IDLE_EXPIRE_ACTIVE_MS = 4 * 60 * 60 * 1000;
+const IDLE_EXPIRE_FINISHED_MS = 2 * 60 * 60 * 1000;
+const SWEEP_INTERVAL_MS = 30 * 60 * 1000;
 const COLLECTION = 'auction_rooms';
 
 const PLAYER_MAP = new Map(ALL_PLAYERS.map((p) => [p.id, p]));
@@ -411,9 +414,58 @@ export function createAuctionService(getDb) {
   const roomListeners = new Map();
   const timeAdvanceInFlight = new Map();
   let quotaCooldownUntil = 0;
+  let lastSweepAt = 0;
 
   const isQuotaError = (err) =>
     err?.code === 8 || /quota|resource_exhausted/i.test(err?.message || '');
+
+  function refreshExpiry(room) {
+    const now = Date.now();
+    room.lastActivityAt = now;
+    room.expiresAt = now + (room.phase === 'ANALYZED' ? IDLE_EXPIRE_FINISHED_MS : IDLE_EXPIRE_ACTIVE_MS);
+  }
+
+  function evictLocalRoom(roomId) {
+    memoryRooms.delete(roomId);
+    roomCache.delete(roomId);
+    const listener = roomListeners.get(roomId);
+    if (listener) {
+      try { listener.unsub(); } catch {}
+      roomListeners.delete(roomId);
+    }
+  }
+
+  async function deleteRoomCompletely(db, roomId) {
+    evictLocalRoom(roomId);
+    if (db && Date.now() >= quotaCooldownUntil) {
+      try {
+        await db.collection(COLLECTION).doc(roomId).delete();
+      } catch (err) {
+        if (isQuotaError(err)) quotaCooldownUntil = Date.now() + 30000;
+      }
+    }
+  }
+
+  async function sweepExpiredRooms(db) {
+    const now = Date.now();
+    for (const [id, r] of memoryRooms.entries()) {
+      if (r.expiresAt && now >= r.expiresAt) evictLocalRoom(id);
+    }
+    if (!db || now < quotaCooldownUntil || now - lastSweepAt < SWEEP_INTERVAL_MS) return;
+    lastSweepAt = now;
+    try {
+      const snap = await db.collection(COLLECTION).where('expiresAt', '<=', now).limit(20).get();
+      if (!snap || snap.empty) return;
+      const deletions = [];
+      snap.forEach((doc) => {
+        evictLocalRoom(doc.id);
+        deletions.push(doc.ref.delete().catch(() => {}));
+      });
+      await Promise.all(deletions);
+    } catch (err) {
+      if (isQuotaError(err)) quotaCooldownUntil = Date.now() + 30000;
+    }
+  }
 
   function cacheRoom(room) {
     if (!room?.roomId) return;
@@ -434,6 +486,7 @@ export function createAuctionService(getDb) {
       const unsub = ref.onSnapshot(
         (snap) => {
           if (snap.exists) cacheRoom(snap.data());
+          else evictLocalRoom(roomId);
         },
         (err) => {
           if (isQuotaError(err)) quotaCooldownUntil = Date.now() + 120000;
@@ -453,18 +506,30 @@ export function createAuctionService(getDb) {
 
   async function runRoomTx(roomId, mutator) {
     const db = getDb();
+    const now = Date.now();
     if (!db) {
       const room = memoryRooms.get(roomId);
       if (!room) return { error: 'Room not found.', status: 404 };
+      if (room.expiresAt && now >= room.expiresAt) {
+        evictLocalRoom(roomId);
+        return { error: 'Room expired due to inactivity.', status: 404, expired: true };
+      }
       advanceTimeIfNeeded(room);
       const res = mutator(room);
       if (res?.error) return res;
-      if (!res?.noBump) room.version = (room.version || 0) + 1;
+      if (res?.deleteRoom) {
+        evictLocalRoom(roomId);
+        return { deleted: true };
+      }
+      if (!res?.noBump) {
+        room.version = (room.version || 0) + 1;
+        refreshExpiry(room);
+      }
       cacheRoom(room);
       return { room };
     }
 
-    if (Date.now() < quotaCooldownUntil) {
+    if (now < quotaCooldownUntil) {
       return {
         error: 'Database daily quota reached (resets at midnight PT / ~1:30 PM IST). Upgrade to Blaze or try after reset.',
         status: 503,
@@ -478,16 +543,37 @@ export function createAuctionService(getDb) {
         const snap = await tx.get(ref);
         if (!snap.exists) return { error: 'Room not found.', status: 404 };
         const room = snap.data();
+        if (room.expiresAt && Date.now() >= room.expiresAt) {
+          tx.delete(ref);
+          return { error: 'Room expired due to inactivity.', status: 404, expired: true, _evict: true };
+        }
         const timeChanged = advanceTimeIfNeeded(room);
         const res = mutator(room);
         if (res?.error) {
-          if (timeChanged) tx.set(ref, room);
+          if (timeChanged) {
+            refreshExpiry(room);
+            tx.set(ref, room);
+          }
           return res;
         }
-        if (!res?.noBump) room.version = (room.version || 0) + 1;
+        if (res?.deleteRoom) {
+          tx.delete(ref);
+          return { deleted: true, _evict: true };
+        }
+        if (!res?.noBump) {
+          room.version = (room.version || 0) + 1;
+          refreshExpiry(room);
+        } else if (timeChanged) {
+          refreshExpiry(room);
+        }
         if (!res?.noBump || timeChanged) tx.set(ref, room);
         return { room };
       });
+      if (out?._evict) {
+        evictLocalRoom(roomId);
+        delete out._evict;
+        return out;
+      }
       if (out?.room) {
         cacheRoom(out.room);
         ensureListener(db, roomId);
@@ -536,6 +622,8 @@ export function createAuctionService(getDb) {
       lastLotOutcome: null,
       analysis: null,
       createdAt: Date.now(),
+      lastActivityAt: Date.now(),
+      expiresAt: Date.now() + IDLE_EXPIRE_ACTIVE_MS,
       teams: [{
         id: teamId, name: cleanName, isHost: true, quit: false,
         theme: { color: TEAM_THEMES[0].color, label: TEAM_THEMES[0].label, badge: makeTeamBadge(cleanName) },
@@ -588,6 +676,7 @@ export function createAuctionService(getDb) {
 
     if (!room) return { error: 'Could not allocate room ID. Please try again.', status: 503 };
     cacheRoom(room);
+    sweepExpiredRooms(db).catch(() => {});
     return { room, teamId };
   }
 
@@ -637,7 +726,8 @@ export function createAuctionService(getDb) {
       if (room.phase === 'LOBBY') {
         const wasHost = room.teams[idx].isHost;
         room.teams.splice(idx, 1);
-        if (wasHost && room.teams.length > 0) {
+        if (room.teams.length === 0) return { deleteRoom: true };
+        if (wasHost) {
           room.teams[0].isHost = true;
           room.hostTeamId = room.teams[0].id;
         }
@@ -648,6 +738,11 @@ export function createAuctionService(getDb) {
       team.quit = true;
       team.disqualified = true;
       team.roles = { captainId: '', wicketkeeperId: '', impactPlayerId: '', confirmed: true };
+
+      if (room.teams.every((t) => t.quit)) {
+        return { deleteRoom: true };
+      }
+
       if (team.isHost) {
         team.isHost = false;
         const nextHost = room.teams.find((t) => !t.quit);
@@ -862,16 +957,24 @@ export function createAuctionService(getDb) {
 
   async function getState({ roomId, clientVersion }) {
     const db = getDb();
+    const now = Date.now();
     if (!db) {
       const room = memoryRooms.get(roomId);
       if (!room) return { error: 'Room not found.', status: 404 };
+      if (room.expiresAt && now >= room.expiresAt) {
+        evictLocalRoom(roomId);
+        return { error: 'Room expired due to inactivity.', status: 404, expired: true };
+      }
       const changed = advanceTimeIfNeeded(room);
-      if (changed) cacheRoom(room);
+      if (changed) {
+        refreshExpiry(room);
+        cacheRoom(room);
+      }
       if (!changed && clientVersion && Number(clientVersion) === room.version) return { unchanged: true };
       return { room };
     }
 
-    if (Date.now() < quotaCooldownUntil) {
+    if (now < quotaCooldownUntil) {
       return {
         error: 'Database daily quota reached (resets at midnight PT / ~1:30 PM IST).',
         status: 503,
@@ -883,7 +986,7 @@ export function createAuctionService(getDb) {
     const cached = roomCache.get(roomId);
     const hasListener = roomListeners.has(roomId);
 
-    if (cached && (hasListener || Date.now() - cached.cachedAt < 1000)) {
+    if (cached && (hasListener || now - cached.cachedAt < 1000)) {
       room = cached.room;
       ensureListener(db, roomId);
     } else {
@@ -906,7 +1009,10 @@ export function createAuctionService(getDb) {
       }
     }
 
-    const now = Date.now();
+    if (room.expiresAt && now >= room.expiresAt) {
+      await deleteRoomCompletely(db, roomId);
+      return { error: 'Room expired due to inactivity.', status: 404, expired: true };
+    }
     const needsTimeAdvance =
       (room.phase === 'AUCTION' && ((room.timerEndsAt && now >= room.timerEndsAt + BID_GRACE_MS) || (!room.timerEndsAt && room.highestBid === null && room.idleEndsAt && now >= room.idleEndsAt + BID_GRACE_MS))) ||
       (room.phase === 'LOT_RESULT' && room.lotResultEndsAt && now >= room.lotResultEndsAt);

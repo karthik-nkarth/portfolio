@@ -74,7 +74,7 @@ export function createAuctionRouter(getDb) {
     try {
       const { roomId, teamId, v } = req.query;
       const result = await service.getState({ roomId, clientVersion: v });
-      if (result.error) return res.status(result.status || 404).json({ ok: false, error: result.error, quotaExceeded: Boolean(result.quotaExceeded) });
+      if (result.error) return res.status(result.status || 404).json({ ok: false, error: result.error, quotaExceeded: Boolean(result.quotaExceeded), expired: Boolean(result.expired) });
       if (result.unchanged) return res.json({ ok: true, unchanged: true });
       res.json({ ok: true, state: serializeRoom(result.room, teamId || null) });
     } catch {
