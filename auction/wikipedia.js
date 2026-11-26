@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-const CACHE_DIR = path.join(os.tmpdir(), 'ipl-wiki-cache-v2');
+const CACHE_DIR = path.join(os.tmpdir(), 'ipl-wiki-cache-v3');
 const memoryCache = new Map();
 const inFlight = new Map();
 
@@ -54,7 +54,11 @@ async function fetchWithTimeout(url, timeoutMs = 4200, browserUa = false) {
 async function downloadImage(imgUrl) {
   if (!imgUrl) return null;
   const fullUrl = imgUrl.startsWith('//') ? `https:${imgUrl}` : imgUrl;
-  const res = await fetchWithTimeout(fullUrl, 4500, true);
+  const isWiki = /wikimedia\.org|wikipedia\.org/i.test(fullUrl);
+  let res = await fetchWithTimeout(fullUrl, 4500, !isWiki);
+  if (!res.ok && isWiki) {
+    res = await fetchWithTimeout(fullUrl, 4500, true);
+  }
   if (!res.ok) return null;
   const ct = res.headers.get('content-type') || '';
   if (!ct.startsWith('image/')) return null;
