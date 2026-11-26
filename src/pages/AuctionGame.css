@@ -1,16 +1,44 @@
 .ag-root {
   min-height: 100vh;
+  padding-bottom: 68px;
   background: radial-gradient(circle at 50% -10%, #172554 0%, #070b14 55%, #04060c 100%);
   color: #f8fafc;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   position: relative;
   overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
   --gold: #f59e0b;
   --gold-bright: #fbbf24;
   --cyan: #38bdf8;
   --border: rgba(148, 163, 184, 0.16);
   --border-strong: rgba(245, 158, 11, 0.45);
 }
+
+.ag-root button, .ag-root input, .ag-root select, .ag-team-tile {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ag-quit-fab {
+  position: fixed;
+  bottom: 14px;
+  left: 14px;
+  z-index: 65;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 15px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(239, 68, 68, 0.55);
+  color: #fca5a5;
+  font-weight: 700;
+  font-size: 0.84rem;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.ag-quit-fab:hover { background: rgba(239, 68, 68, 0.22); }
 
 .ag-root * { box-sizing: border-box; }
 

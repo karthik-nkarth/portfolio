@@ -2,6 +2,7 @@ import express from 'express';
 import { ALL_PLAYERS } from './players.js';
 import { createAuctionService, serializeRoom } from './engine.js';
 import { fetchPlayerFromWikipedia, buildFallbackSvg } from './wikipedia.js';
+import { fetchCricinfoStats } from './cricinfo.js';
 
 const PLAYER_MAP = new Map(ALL_PLAYERS.map((p) => [p.id, p]));
 
@@ -32,6 +33,14 @@ export function createAuctionRouter(getDb) {
     return res.send(buildFallbackSvg(player));
   });
 
+  router.get('/player-stats/:id', async (req, res) => {
+    const player = PLAYER_MAP.get(req.params.id);
+    if (!player) return res.status(404).json({ ok: false, error: 'Player not found' });
+    const data = await fetchCricinfoStats(player);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.json({ ok: true, id: player.id, source: data.source, stats: data.stats });
+  });
+
   router.post('/create', async (req, res) => {
     try {
       const result = await service.createRoom({ hostName: req.body?.hostName });
@@ -52,6 +61,15 @@ export function createAuctionRouter(getDb) {
     }
   });
 
+  router.post('/leave', async (req, res) => {
+    try {
+      await service.leaveRoom(req.body || {});
+      res.json({ ok: true });
+    } catch {
+      res.status(500).json({ ok: false });
+    }
+  });
+
   router.get('/state', async (req, res) => {
     try {
       const { roomId, teamId, v } = req.query;
@@ -68,6 +86,13 @@ export function createAuctionRouter(getDb) {
     try {
       const result = await service.startGame(req.body || {});
       if (result.error) return res.status(400).json({ ok: false, error: result.error });
+
+      const firstBatch = (result.room.pool || []).slice(0, 2);
+      await Promise.race([
+        Promise.all(firstBatch.map((p) => fetchCricinfoStats(p).then((r) => { if (r?.stats) p.stats = r.stats; }))),
+        new Promise((resolve) => setTimeout(resolve, 1800))
+      ]);
+
       res.json({ ok: true, state: serializeRoom(result.room, req.body?.teamId) });
     } catch {
       res.status(500).json({ ok: false, error: 'Failed to start auction.' });
@@ -91,16 +116,6 @@ export function createAuctionRouter(getDb) {
       res.json({ ok: true, state: serializeRoom(result.room, req.body?.teamId) });
     } catch {
       res.status(500).json({ ok: false, error: 'Failed to skip lot.' });
-    }
-  });
-
-  router.post('/roles/suggest', async (req, res) => {
-    try {
-      const result = await service.suggestRoles(req.body || {});
-      if (result.error) return res.status(400).json({ ok: false, error: result.error });
-      res.json({ ok: true, roles: result.roles });
-    } catch {
-      res.status(500).json({ ok: false, error: 'Failed to suggest roles.' });
     }
   });
 

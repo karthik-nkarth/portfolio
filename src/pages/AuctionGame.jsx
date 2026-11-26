@@ -3,6 +3,13 @@ import './AuctionGame.css';
 
 const formatINR = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
 
+function formatClock(ms) {
+  const totalSec = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 function AvatarIcon({ color, isHost, label }) {
   return (
     <div className="ag-avatar" style={{ background: color }}>
@@ -77,10 +84,12 @@ export default function AuctionGame() {
   const [roleErr, setRoleErr] = useState('');
   const [inspectedId, setInspectedId] = useState(null);
   const [modalTeam, setModalTeam] = useState(null);
+  const [showQuitModal, setShowQuitModal] = useState(false);
   const [mobTab, setMobTab] = useState('stage');
   const [soundOn, setSoundOn] = useState(true);
   const [copied, setCopied] = useState(false);
-  const [timerMs, setTimerMs] = useState(10000);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [liveStatsMap, setLiveStatsMap] = useState({});
   const [rolesDraft, setRolesDraft] = useState({ captainId: '', wicketkeeperId: '', impactPlayerId: '' });
 
   const audioRef = useRef(null);
@@ -90,6 +99,8 @@ export default function AuctionGame() {
   const lastOutcomeKeyRef = useRef(null);
   const lastBeepSecRef = useRef(null);
   const versionRef = useRef(0);
+  const mutatingRef = useRef(false);
+  const guardActiveRef = useRef(false);
 
   function playTone(freq, dur, type = 'sine', vol = 0.07) {
     if (!soundOn) return;
@@ -185,49 +196,86 @@ export default function AuctionGame() {
     return res.json();
   }
 
-  function applyNewState(next, nextTeamId = null) {
+  function applyNewState(next, nextTeamId = null, force = false) {
     if (!next) return;
+    if (!force && next.version && next.version < versionRef.current) return;
     versionRef.current = next.version || 0;
     setState(next);
     if (nextTeamId) {
       setTeamId(nextTeamId);
       sessionStorage.setItem('ipl_team_id', nextTeamId);
     }
-    const activeId = nextTeamId || teamId;
     if (next.roomId) {
       setRoomId(next.roomId);
       sessionStorage.setItem('ipl_room_id', next.roomId);
     }
-    const me = next.teams?.find((t) => t.id === activeId);
-    if (me?.roles && next.phase === 'ROLE_SELECTION') {
-      setRolesDraft((prev) => ({
-        captainId: prev.captainId || me.roles.captainId || me.squad[0]?.id || '',
-        wicketkeeperId: prev.wicketkeeperId || me.roles.wicketkeeperId || me.squad[0]?.id || '',
-        impactPlayerId: prev.impactPlayerId || me.roles.impactPlayerId || me.squad[0]?.id || ''
-      }));
-    }
   }
+
+  useEffect(() => {
+    if (!state) {
+      guardActiveRef.current = false;
+      return;
+    }
+    if (!guardActiveRef.current) {
+      window.history.pushState({ agGuard: true }, '', window.location.href);
+      guardActiveRef.current = true;
+    }
+
+    const onPopState = () => {
+      window.history.pushState({ agGuard: true }, '', window.location.href);
+      setShowQuitModal(true);
+    };
+    const onBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+
+    window.addEventListener('popstate', onPopState);
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+  }, [Boolean(state)]);
 
   useEffect(() => {
     if (!roomId || !teamId) return;
     let alive = true;
     async function poll() {
+      if (mutatingRef.current) return;
       try {
-        const res = await fetch(`/api/auction/state?roomId=${encodeURIComponent(roomId)}&teamId=${encodeURIComponent(teamId)}&v=${versionRef.current}`);
+        const res = await fetch(
+          `/api/auction/state?roomId=${encodeURIComponent(roomId)}&teamId=${encodeURIComponent(teamId)}&v=${versionRef.current}`
+        );
         const data = await res.json();
-        if (alive && data.ok && !data.unchanged && data.state) {
+        if (alive && !mutatingRef.current && data.ok && !data.unchanged && data.state) {
           applyNewState(data.state);
         }
       } catch {}
     }
     poll();
-    const delay = state?.phase === 'AUCTION' || state?.phase === 'LOT_RESULT' ? 350 : 900;
+    const delay = state?.phase === 'AUCTION' || state?.phase === 'LOT_RESULT' ? 300 : 850;
     const id = setInterval(poll, delay);
     return () => {
       alive = false;
       clearInterval(id);
     };
   }, [roomId, teamId, state?.phase]);
+
+  useEffect(() => {
+    const p = state?.currentPlayer;
+    if (!p || liveStatsMap[p.id]) return;
+    let alive = true;
+    fetch(`/api/auction/player-stats/${encodeURIComponent(p.id)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (alive && data?.ok && data.stats) {
+          setLiveStatsMap((prev) => ({ ...prev, [p.id]: { stats: data.stats, source: data.source } }));
+        }
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [state?.currentPlayer?.id]);
 
   useEffect(() => {
     if (!state) return;
@@ -263,21 +311,20 @@ export default function AuctionGame() {
 
   useEffect(() => {
     if (!state || state.phase !== 'AUCTION') return;
-    if (!state.timerEndsAt) {
-      setTimerMs(10000);
-      return;
-    }
     const id = setInterval(() => {
-      const left = Math.max(0, state.timerEndsAt - Date.now());
-      setTimerMs(left);
-      const ceil = Math.ceil(left / 1000);
-      if (left <= 3500 && ceil > 0 && ceil !== lastBeepSecRef.current) {
-        lastBeepSecRef.current = ceil;
-        playTone(950, 0.05, 'sine', 0.05);
+      const now = Date.now();
+      setNowMs(now);
+      if (state.timerEndsAt) {
+        const left = Math.max(0, state.timerEndsAt - now);
+        const ceil = Math.ceil(left / 1000);
+        if (left <= 3500 && ceil > 0 && ceil !== lastBeepSecRef.current) {
+          lastBeepSecRef.current = ceil;
+          playTone(950, 0.05, 'sine', 0.05);
+        }
       }
     }, 80);
     return () => clearInterval(id);
-  }, [state?.phase, state?.timerEndsAt]);
+  }, [state?.phase, state?.timerEndsAt, state?.idleEndsAt]);
 
   function launchConfetti() {
     const canvas = confettiRef.current;
@@ -316,42 +363,138 @@ export default function AuctionGame() {
     e.preventDefault();
     const res = await apiPost('/create', { hostName });
     if (!res.ok) return setLandingErr(res.error);
-    applyNewState(res.state, res.teamId);
+    versionRef.current = 0;
+    applyNewState(res.state, res.teamId, true);
   }
 
   async function handleJoin(e) {
     e.preventDefault();
     const res = await apiPost('/join', { roomId: joinRoomId, password: joinPin, teamName: joinName });
     if (!res.ok) return setLandingErr(res.error);
-    applyNewState(res.state, res.teamId);
+    versionRef.current = 0;
+    applyNewState(res.state, res.teamId, true);
   }
 
-  async function handleBidSubmit(e) {
+  async function placeInstantBid(amount) {
+    if (!state?.currentPlayer || mutatingRef.current) return;
+    const me = state.teams.find((t) => t.id === teamId);
+    if (!me || state.phase !== 'AUCTION') return;
+
+    const val = Math.floor(Number(amount));
+    if (!Number.isFinite(val) || val <= 0) {
+      setBidErr('Enter a valid positive bid amount.');
+      setTimeout(() => setBidErr(''), 3000);
+      return;
+    }
+    if (state.highestBidderId === me.id) {
+      setBidErr('You already hold the highest bid!');
+      setTimeout(() => setBidErr(''), 2500);
+      return;
+    }
+    if (state.highestBid === null && val < state.currentPlayer.basePrice) {
+      setBidErr(`Opening bid must be at least ${formatINR(state.currentPlayer.basePrice)}.`);
+      setTimeout(() => setBidErr(''), 3000);
+      return;
+    }
+    if (state.highestBid !== null && val <= state.highestBid) {
+      setBidErr(`Your bid must be higher than ${formatINR(state.highestBid)}.`);
+      setTimeout(() => setBidErr(''), 3000);
+      return;
+    }
+    if (val > me.maxBidAllowed) {
+      const rem = Math.max(0, 12 - me.squadCount - 1);
+      setBidErr(`Cannot buy! Max bid limit reached (${formatINR(me.maxBidAllowed)}) — reserve ₹300 × ${rem} slots.`);
+      setTimeout(() => setBidErr(''), 3500);
+      return;
+    }
+
+    const prev = state;
+    const optimistic = {
+      ...state,
+      version: (state.version || 0) + 1,
+      highestBid: val,
+      highestBidderId: me.id,
+      highestBidderName: me.name,
+      bidCount: (state.bidCount || 0) + 1,
+      idleEndsAt: null,
+      timerEndsAt: Date.now() + 10000,
+      teams: state.teams.map((t) => (t.id === me.id ? { ...t, currentLotBid: val } : t))
+    };
+    versionRef.current = optimistic.version;
+    setState(optimistic);
+    setBidInput('');
+    setBidErr('');
+    playTone(620, 0.08, 'triangle', 0.08);
+    setTimeout(() => playTone(880, 0.09, 'triangle', 0.06), 55);
+
+    mutatingRef.current = true;
+    try {
+      const res = await apiPost('/bid', { roomId, teamId, amount: val });
+      if (!res.ok) {
+        setState(prev);
+        versionRef.current = prev.version || 0;
+        setBidErr(res.error);
+        setTimeout(() => setBidErr(''), 3500);
+      } else if (res.state) {
+        applyNewState(res.state, null, true);
+      }
+    } finally {
+      mutatingRef.current = false;
+    }
+  }
+
+  function handleBidSubmit(e) {
     e.preventDefault();
     if (!state?.currentPlayer) return;
     const raw = bidInput.trim();
     const amount = raw ? Number(raw) : (state.highestBid === null ? state.currentPlayer.basePrice : state.highestBid + 100);
-    const res = await apiPost('/bid', { roomId, teamId, amount });
-    if (!res.ok) {
-      setBidErr(res.error);
-      setTimeout(() => setBidErr(''), 3500);
-    } else {
-      setBidInput('');
-      applyNewState(res.state);
-    }
+    placeInstantBid(amount);
   }
 
   async function handleSkip() {
-    const res = await apiPost('/skip', { roomId, teamId });
-    if (!res.ok) {
-      setBidErr(res.error);
-      setTimeout(() => setBidErr(''), 3000);
-    } else applyNewState(res.state);
+    if (!state || mutatingRef.current || state.phase !== 'AUCTION') return;
+    const me = state.teams.find((t) => t.id === teamId);
+    if (!me || state.highestBidderId === me.id || me.skippedCurrent) return;
+
+    const prev = state;
+    const optimistic = {
+      ...state,
+      version: (state.version || 0) + 1,
+      teams: state.teams.map((t) => (t.id === me.id ? { ...t, skippedCurrent: true } : t))
+    };
+    versionRef.current = optimistic.version;
+    setState(optimistic);
+
+    mutatingRef.current = true;
+    try {
+      const res = await apiPost('/skip', { roomId, teamId });
+      if (!res.ok) {
+        setState(prev);
+        versionRef.current = prev.version || 0;
+        setBidErr(res.error);
+        setTimeout(() => setBidErr(''), 3000);
+      } else if (res.state) {
+        applyNewState(res.state, null, true);
+      }
+    } finally {
+      mutatingRef.current = false;
+    }
   }
 
-  async function handleAutoSuggest() {
-    const res = await apiPost('/roles/suggest', { roomId, teamId });
-    if (res.ok && res.roles) setRolesDraft(res.roles);
+  async function handleConfirmQuit() {
+    setShowQuitModal(false);
+    if (roomId && teamId) {
+      try {
+        await apiPost('/leave', { roomId, teamId });
+      } catch {}
+    }
+    sessionStorage.removeItem('ipl_room_id');
+    sessionStorage.removeItem('ipl_team_id');
+    versionRef.current = 0;
+    setRolesDraft({ captainId: '', wicketkeeperId: '', impactPlayerId: '' });
+    setState(null);
+    setRoomId(null);
+    setTeamId(null);
   }
 
   async function handleLockRoles() {
@@ -359,15 +502,15 @@ export default function AuctionGame() {
     if (!res.ok) {
       setRoleErr(res.error);
       setTimeout(() => setRoleErr(''), 3500);
-    } else applyNewState(res.state);
+    } else applyNewState(res.state, null, true);
   }
 
   async function handleAnalyze() {
-    if (rolesDraft.captainId && rolesDraft.wicketkeeperId && rolesDraft.impactPlayerId) {
-      await apiPost('/roles/submit', { roomId, teamId, ...rolesDraft });
-    }
     const res = await apiPost('/analyze', { roomId, teamId });
-    if (res.ok) applyNewState(res.state);
+    if (!res.ok) {
+      setRoleErr(res.error);
+      setTimeout(() => setRoleErr(''), 3500);
+    } else applyNewState(res.state, null, true);
   }
 
   if (!state) {
@@ -379,7 +522,7 @@ export default function AuctionGame() {
             <h1>IPL PRIME <span className="ag-gold-text">AUCTION</span></h1>
             <p className="ag-muted">
               2 to 7 managers. <strong>₹50,000</strong> purse. <strong>12-player</strong> squads (4 Overseas max).
-              Dynamic lot sizes (40–100 players) from our prime IPL legends &amp; stars database.
+              Dynamic lot sizes (40–100 players) with live Cricinfo stats.
             </p>
           </header>
 
@@ -427,7 +570,7 @@ export default function AuctionGame() {
             <div className="ag-rule-chip"><strong>₹50,000</strong><span>INR Purse</span></div>
             <div className="ag-rule-chip"><strong>12 Players</strong><span>11 XI + 1 Impact</span></div>
             <div className="ag-rule-chip"><strong>Max 4</strong><span>Overseas Rule</span></div>
-            <div className="ag-rule-chip"><strong>10s Clock</strong><span>Starts on 1st Bid</span></div>
+            <div className="ag-rule-chip"><strong>2m / 10s</strong><span>Idle / Bid Clock</span></div>
             <div className="ag-rule-chip"><strong>2 Rounds</strong><span>Unsold Comeback</span></div>
             <div className="ag-rule-chip"><strong>10 Metrics</strong><span>Equal-Weight Winner</span></div>
           </section>
@@ -442,8 +585,37 @@ export default function AuctionGame() {
   const isLeader = state.highestBidderId === me?.id;
   const isSkipped = me?.skippedCurrent;
   const cannotBid = state.phase !== 'AUCTION' || !me?.eligibleForCurrent || isLeader || isSkipped;
-  const timerSecs = timerMs / 1000;
-  const timerPct = state.timerEndsAt ? Math.max(0, Math.min(100, (timerMs / 10000) * 100)) : 100;
+  const bidCount = state.bidCount || 0;
+
+  const isBidClock = Boolean(state.timerEndsAt);
+  const msLeft = isBidClock
+    ? Math.max(0, state.timerEndsAt - nowMs)
+    : state.idleEndsAt
+    ? Math.max(0, state.idleEndsAt - nowMs)
+    : 120000;
+  const timerPct = isBidClock
+    ? Math.max(0, Math.min(100, (msLeft / 10000) * 100))
+    : Math.max(0, Math.min(100, (msLeft / 120000) * 100));
+  const urgent = isBidClock ? msLeft <= 3500 : msLeft <= 15000;
+
+  const displayStats = (p && liveStatsMap[p.id]?.stats) || p?.stats;
+  const isLiveCricinfo = p && liveStatsMap[p.id]?.source === 'espncricinfo';
+
+  const quickButtons = [];
+  if (bidCount === 0) {
+    quickButtons.push({ label: 'Base', val: p?.basePrice || 300 });
+    quickButtons.push({ label: '+₹100', val: (p?.basePrice || 300) + 100 });
+    quickButtons.push({ label: '+₹200', val: (p?.basePrice || 300) + 200 });
+    quickButtons.push({ label: '+₹500', val: (p?.basePrice || 300) + 500 });
+    quickButtons.push({ label: '+₹1,000', val: (p?.basePrice || 300) + 1000 });
+  } else {
+    if (bidCount < 3) quickButtons.push({ label: '+₹100', val: state.highestBid + 100 });
+    if (bidCount < 5) {
+      quickButtons.push({ label: '+₹200', val: state.highestBid + 200 });
+      quickButtons.push({ label: '+₹500', val: state.highestBid + 500 });
+    }
+    quickButtons.push({ label: '+₹1,000', val: state.highestBid + 1000 });
+  }
 
   return (
     <div className="ag-root">
@@ -476,11 +648,11 @@ export default function AuctionGame() {
           </span>
           <span className="ag-muted" style={{ fontSize: '0.82rem', fontWeight: 600 }}>
             {state.phase === 'LOBBY'
-              ? `${state.teams.length}/${state.rules.maxPlayers} Teams`
+              ? `${state.teams.filter((t) => !t.quit).length}/${state.rules.maxPlayers} Teams`
               : state.phase === 'AUCTION' || state.phase === 'LOT_RESULT'
               ? `Lot ${state.lotNumber} / ${state.totalLotsInRound}`
               : state.phase === 'ROLE_SELECTION'
-              ? 'Choose C • WK • Impact'
+              ? 'Manual C • WK • Impact'
               : '10-Criteria Analysis'}
           </span>
         </div>
@@ -557,12 +729,12 @@ export default function AuctionGame() {
                 disabled={state.teams.length < state.rules.minPlayers}
                 onClick={async () => {
                   const res = await apiPost('/start', { roomId, teamId });
-                  if (res.ok) applyNewState(res.state);
+                  if (res.ok) applyNewState(res.state, null, true);
                 }}
               >
                 {state.teams.length < state.rules.minPlayers
                   ? `Need at least ${state.rules.minPlayers} teams to start`
-                  : `Start Auction (${state.recommendedLotSize} Random Players)`}
+                  : `Sync Cricinfo Stats & Start Auction (${state.recommendedLotSize} Players)`}
               </button>
             ) : (
               <div style={{ textAlign: 'center', color: '#38bdf8', fontWeight: 600 }}>Waiting for the room host to start the auction...</div>
@@ -597,12 +769,14 @@ export default function AuctionGame() {
                         <div style={{ fontWeight: 700, fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {t.name} {t.id === teamId ? '★' : ''}
                         </div>
-                        <div className="ag-muted-xs">{t.squadCount}/12 • OS {t.overseasCount}/4</div>
+                        <div className="ag-muted-xs">{t.quit ? 'QUIT' : `${t.squadCount}/12 • OS ${t.overseasCount}/4`}</div>
                       </div>
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>
                       <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, fontSize: '0.88rem', color: '#6ee7b7' }}>{formatINR(t.purse)}</div>
-                      {t.skippedCurrent ? (
+                      {t.quit ? (
+                        <span className="ag-skip-badge">LEFT</span>
+                      ) : t.skippedCurrent ? (
                         <span className="ag-skip-badge">❌ SKIP</span>
                       ) : t.currentLotBid ? (
                         <span className={`ag-bubble ${leading ? 'is-leading' : ''}`}>{formatINR(t.currentLotBid)}</span>
@@ -683,16 +857,19 @@ export default function AuctionGame() {
                       <img src={`/api/auction/player-image/${encodeURIComponent(p.id)}`} alt={p.name} />
                     </div>
                     <h2 className="ag-player-name">{p.name}</h2>
-                    <div className="ag-muted">{p.country} • {p.battingStyle}{p.bowlingStyle && p.bowlingStyle !== 'None' ? ` • ${p.bowlingStyle}` : ''}</div>
+                    <div className="ag-muted">
+                      {p.country} • {p.battingStyle}{p.bowlingStyle && p.bowlingStyle !== 'None' ? ` • ${p.bowlingStyle}` : ''}
+                      {isLiveCricinfo && <span style={{ marginLeft: 8, color: '#6ee7b7', fontSize: '0.72rem', fontWeight: 700 }}>● Cricinfo Live</span>}
+                    </div>
                   </div>
 
                   <div className="ag-stats-grid">
-                    <div className="ag-stat-box"><span>MAT</span><strong>{p.stats.matches || '-'}</strong></div>
-                    <div className="ag-stat-box"><span>RUNS</span><strong>{p.stats.runs || '-'}</strong></div>
-                    <div className="ag-stat-box"><span>SR</span><strong>{p.stats.strikeRate ? p.stats.strikeRate.toFixed(1) : '-'}</strong></div>
-                    <div className="ag-stat-box"><span>AVG</span><strong>{p.stats.average ? p.stats.average.toFixed(1) : '-'}</strong></div>
-                    <div className="ag-stat-box"><span>WKTS</span><strong>{p.stats.wickets || '-'}</strong></div>
-                    <div className="ag-stat-box"><span>ECON</span><strong>{p.stats.economy ? p.stats.economy.toFixed(2) : '-'}</strong></div>
+                    <div className="ag-stat-box"><span>MAT</span><strong>{displayStats?.matches || '-'}</strong></div>
+                    <div className="ag-stat-box"><span>RUNS</span><strong>{displayStats?.runs || '-'}</strong></div>
+                    <div className="ag-stat-box"><span>SR</span><strong>{displayStats?.strikeRate ? Number(displayStats.strikeRate).toFixed(1) : '-'}</strong></div>
+                    <div className="ag-stat-box"><span>AVG</span><strong>{displayStats?.average ? Number(displayStats.average).toFixed(1) : '-'}</strong></div>
+                    <div className="ag-stat-box"><span>WKTS</span><strong>{displayStats?.wickets || '-'}</strong></div>
+                    <div className="ag-stat-box"><span>ECON</span><strong>{displayStats?.economy ? Number(displayStats.economy).toFixed(2) : '-'}</strong></div>
                   </div>
                 </div>
 
@@ -716,13 +893,15 @@ export default function AuctionGame() {
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: 6 }}>
-                    <span className="ag-muted">{state.timerEndsAt ? 'Going once, going twice...' : 'Waiting for opening bid (10s clock paused)'}</span>
-                    <strong style={{ fontFamily: 'ui-monospace, monospace', color: timerSecs <= 3.5 && state.timerEndsAt ? '#f87171' : '#fbbf24' }}>
-                      {timerSecs.toFixed(1)}s
+                    <span className="ag-muted">
+                      {isBidClock ? 'Going once, going twice...' : 'Waiting for opening bid (2 min display limit)'}
+                    </span>
+                    <strong style={{ fontFamily: 'ui-monospace, monospace', color: urgent ? '#f87171' : '#fbbf24' }}>
+                      {isBidClock ? `${(msLeft / 1000).toFixed(1)}s` : formatClock(msLeft)}
                     </strong>
                   </div>
                   <div className="ag-timer-track">
-                    <div className={`ag-timer-fill ${timerSecs <= 3.5 && state.timerEndsAt ? 'urgent' : ''}`} style={{ width: `${timerPct}%` }} />
+                    <div className={`ag-timer-fill ${urgent ? 'urgent' : ''}`} style={{ width: `${timerPct}%` }} />
                   </div>
                 </div>
 
@@ -751,13 +930,18 @@ export default function AuctionGame() {
                 </form>
 
                 <div className="ag-chips">
-                  <button type="button" className="ag-chip" disabled={cannotBid} onClick={() => setBidInput(String(state.highestBid === null ? p.basePrice : state.highestBid + 100))}>Base</button>
-                  {[100, 250, 500, 1000].map((inc) => (
-                    <button key={inc} type="button" className="ag-chip" disabled={cannotBid} onClick={() => setBidInput(String(state.highestBid === null ? p.basePrice : state.highestBid + inc))}>
-                      +₹{inc.toLocaleString('en-IN')}
+                  {quickButtons.map((btn) => (
+                    <button
+                      key={btn.label}
+                      type="button"
+                      className="ag-chip"
+                      disabled={cannotBid || btn.val > (me?.maxBidAllowed || 0)}
+                      onClick={() => placeInstantBid(btn.val)}
+                    >
+                      {btn.label}
                     </button>
                   ))}
-                  {me && <span className="ag-muted-xs" style={{ marginLeft: 'auto', fontFamily: 'ui-monospace, monospace' }}>Max Bid Allowed: {formatINR(me.maxBidAllowed)}</span>}
+                  {me && <span className="ag-muted-xs" style={{ marginLeft: 'auto', fontFamily: 'ui-monospace, monospace' }}>Max Bid: {formatINR(me.maxBidAllowed)}</span>}
                 </div>
 
                 {bidErr && <div className="ag-error">{bidErr}</div>}
@@ -772,12 +956,12 @@ export default function AuctionGame() {
           <div className="ag-card" style={{ padding: 24 }}>
             <div className="ag-tag ag-tag-cyan">AUCTION COMPLETE</div>
             <h2 style={{ margin: '4px 0 8px' }}>Select Captain, Wicketkeeper &amp; Impact Player</h2>
-            <p className="ag-muted">Finalize your 12-player lineup, then click <strong>Analyze</strong> in the center to evaluate all teams equally across 10 criteria!</p>
+            <p className="ag-muted">Manually choose your Captain, Wicketkeeper, and Impact Player below, lock them in, and then click <strong>Analyze</strong>!</p>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
               {state.teams.map((t) => (
                 <span key={t.id} className={`ag-pill ${t.disqualified ? 'ag-pill-disq' : t.roles.confirmed ? 'ag-pill-role' : 'ag-pill-era'}`}>
-                  {t.theme.badge}: {t.disqualified ? 'DISQUALIFIED' : t.roles.confirmed ? '✓ Locked' : 'Picking...'}
+                  {t.theme.badge}: {t.quit ? 'QUIT' : t.disqualified ? 'DISQUALIFIED' : t.roles.confirmed ? '✓ Locked' : 'Choosing...'}
                 </span>
               ))}
             </div>
@@ -794,6 +978,7 @@ export default function AuctionGame() {
                   <div key={key} className="ag-role-box">
                     <label className="ag-label">{label}</label>
                     <select value={rolesDraft[key]} onChange={(e) => setRolesDraft((r) => ({ ...r, [key]: e.target.value }))}>
+                      <option value="">-- Choose {label.split(' ')[0]} --</option>
                       {me.squad.map((sp) => (
                         <option key={sp.id} value={sp.id}>{sp.name} ({sp.role} • {sp.country})</option>
                       ))}
@@ -806,12 +991,16 @@ export default function AuctionGame() {
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'center', padding: 16, borderRadius: 14, background: 'rgba(245, 158, 11, 0.06)', border: '1px dashed rgba(245, 158, 11, 0.35)' }}>
               {!me?.disqualified && (
-                <>
-                  <button type="button" className="ag-btn ag-btn-cyan-outline" onClick={handleAutoSuggest}>Auto-Suggest Best Roles</button>
-                  <button type="button" className="ag-btn ag-btn-cyan" onClick={handleLockRoles}>Lock In My Roles</button>
-                </>
+                <button type="button" className="ag-btn ag-btn-cyan" onClick={handleLockRoles}>Lock In My Roles</button>
               )}
-              <button type="button" className="ag-btn ag-btn-gold ag-btn-xl" onClick={handleAnalyze}>⚡ ANALYZE ALL TEAMS &amp; DECLARE WINNER</button>
+              <button
+                type="button"
+                className="ag-btn ag-btn-gold ag-btn-xl"
+                disabled={state.teams.some((t) => !t.quit && !t.disqualified && t.squadCount > 0 && !t.roles.confirmed)}
+                onClick={handleAnalyze}
+              >
+                ⚡ ANALYZE ALL TEAMS &amp; DECLARE WINNER
+              </button>
             </div>
             {roleErr && <div className="ag-error" style={{ marginTop: 10 }}>{roleErr}</div>}
           </div>
@@ -852,17 +1041,7 @@ export default function AuctionGame() {
                 <div className="ag-tag">EQUAL-WEIGHT EVALUATION (10 × 100 PTS = 1,000 MAX)</div>
                 <h2 style={{ margin: '4px 0 0' }}>Complete Team Ratings &amp; Breakdown</h2>
               </div>
-              <button
-                type="button"
-                className="ag-btn ag-btn-cyan-outline"
-                onClick={() => {
-                  sessionStorage.removeItem('ipl_room_id');
-                  sessionStorage.removeItem('ipl_team_id');
-                  setState(null);
-                  setRoomId(null);
-                  setTeamId(null);
-                }}
-              >
+              <button type="button" className="ag-btn ag-btn-cyan-outline" onClick={handleConfirmQuit}>
                 New Auction Game
               </button>
             </div>
@@ -907,6 +1086,27 @@ export default function AuctionGame() {
             </div>
           </div>
         </section>
+      )}
+
+      <button type="button" className="ag-quit-fab" onClick={() => setShowQuitModal(true)}>
+        ✕ Quit
+      </button>
+
+      {showQuitModal && (
+        <div className="ag-modal-bg" onClick={() => setShowQuitModal(false)}>
+          <div className="ag-card" style={{ maxWidth: 380, width: '100%', padding: 22, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 8px' }}>Are you sure you want to quit?</h3>
+            <p className="ag-muted" style={{ marginBottom: 18 }}>If you exit now, you will leave the active auction room and return to the Create / Join screen.</p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" className="ag-btn ag-btn-cyan-outline" style={{ flex: 1 }} onClick={() => setShowQuitModal(false)}>
+                No, Stay
+              </button>
+              <button type="button" className="ag-btn ag-btn-danger-outline" style={{ flex: 1 }} onClick={handleConfirmQuit}>
+                Yes, Quit
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {modalTeam && (
