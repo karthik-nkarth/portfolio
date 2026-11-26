@@ -81,11 +81,38 @@ function loadSavedSnapshot() {
   }
 }
 
-export default function AuctionGame() {
+class AuctionErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="ag-root" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div className="ag-card" style={{ maxWidth: 420, padding: 24, textAlign: 'center' }}>
+            <h2 style={{ margin: '0 0 8px' }}>Recovering Auction View</h2>
+            <p className="ag-muted" style={{ marginBottom: 16 }}>Your saved room and squad are still safe. Tap below to reload the view.</p>
+            <button type="button" className="ag-btn ag-btn-gold ag-btn-lg" onClick={() => window.location.reload()}>
+              Reload Auction Room
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function AuctionGameInner() {
   const [state, setState] = useState(() => loadSavedSnapshot());
   const [teamId, setTeamId] = useState(() => localStorage.getItem('ipl_team_id') || sessionStorage.getItem('ipl_team_id') || null);
   const [roomId, setRoomId] = useState(() => localStorage.getItem('ipl_room_id') || sessionStorage.getItem('ipl_room_id') || null);
   const [reconnecting, setReconnecting] = useState(false);
+  const [lobbyErr, setLobbyErr] = useState('');
   const [hostName, setHostName] = useState('');
   const [joinRoomId, setJoinRoomId] = useState('');
   const [joinPin, setJoinPin] = useState('');
@@ -307,13 +334,8 @@ export default function AuctionGame() {
           `/api/auction/state?roomId=${encodeURIComponent(roomId)}&teamId=${encodeURIComponent(teamId)}&v=${versionRef.current}`
         );
         if (res.status === 404) {
-          clearSavedGame();
-          if (alive) {
-            setState(null);
-            setRoomId(null);
-            setTeamId(null);
-          }
-          return;
+          setReconnecting(true);
+          return scheduleNext(4000);
         }
         const data = await res.json();
         const t1 = Date.now();
@@ -790,19 +812,27 @@ export default function AuctionGame() {
             </div>
 
             {me?.isHost ? (
-              <button
-                type="button"
-                className="ag-btn ag-btn-gold ag-btn-lg"
-                disabled={state.teams.length < state.rules.minPlayers}
-                onClick={async () => {
-                  const res = await apiPost('/start', { roomId, teamId });
-                  if (res.ok) applyNewState(res.state, null, true);
-                }}
-              >
-                {state.teams.length < state.rules.minPlayers
-                  ? `Need at least ${state.rules.minPlayers} teams to start`
-                  : `Refresh Stats & Start Auction (${state.recommendedLotSize} Players)`}
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="ag-btn ag-btn-gold ag-btn-lg"
+                  disabled={state.teams.length < state.rules.minPlayers}
+                  onClick={async () => {
+                    const res = await apiPost('/start', { roomId, teamId });
+                    if (res.ok) {
+                      setLobbyErr('');
+                      applyNewState(res.state, null, true);
+                    } else {
+                      setLobbyErr(res.error || 'Could not start auction.');
+                    }
+                  }}
+                >
+                  {state.teams.length < state.rules.minPlayers
+                    ? `Need at least ${state.rules.minPlayers} teams to start`
+                    : `Refresh Stats & Start Auction (${state.recommendedLotSize} Players)`}
+                </button>
+                {lobbyErr && <div className="ag-error" style={{ marginTop: 10 }}>{lobbyErr}</div>}
+              </>
             ) : (
               <div style={{ textAlign: 'center', color: '#38bdf8', fontWeight: 600 }}>Waiting for the room host to start the auction...</div>
             )}
@@ -1197,5 +1227,13 @@ export default function AuctionGame() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function AuctionGame() {
+  return (
+    <AuctionErrorBoundary>
+      <AuctionGameInner />
+    </AuctionErrorBoundary>
   );
 }

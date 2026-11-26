@@ -44,7 +44,7 @@ export function createAuctionRouter(getDb) {
   router.post('/create', async (req, res) => {
     try {
       const result = await service.createRoom({ hostName: req.body?.hostName });
-      if (result.error) return res.status(400).json({ ok: false, error: result.error });
+      if (result.error) return res.status(result.status || 400).json({ ok: false, error: result.error, quotaExceeded: Boolean(result.quotaExceeded) });
       res.json({ ok: true, teamId: result.teamId, state: serializeRoom(result.room, result.teamId) });
     } catch {
       res.status(500).json({ ok: false, error: 'Failed to create room.' });
@@ -54,7 +54,7 @@ export function createAuctionRouter(getDb) {
   router.post('/join', async (req, res) => {
     try {
       const result = await service.joinRoom(req.body || {});
-      if (result.error) return res.status(400).json({ ok: false, error: result.error });
+      if (result.error) return res.status(result.status || 400).json({ ok: false, error: result.error, quotaExceeded: Boolean(result.quotaExceeded) });
       res.json({ ok: true, teamId: result.teamId, state: serializeRoom(result.room, result.teamId) });
     } catch {
       res.status(500).json({ ok: false, error: 'Failed to join room.' });
@@ -74,7 +74,7 @@ export function createAuctionRouter(getDb) {
     try {
       const { roomId, teamId, v } = req.query;
       const result = await service.getState({ roomId, clientVersion: v });
-      if (result.error) return res.status(404).json({ ok: false, error: result.error });
+      if (result.error) return res.status(result.status || 404).json({ ok: false, error: result.error, quotaExceeded: Boolean(result.quotaExceeded) });
       if (result.unchanged) return res.json({ ok: true, unchanged: true });
       res.json({ ok: true, state: serializeRoom(result.room, teamId || null) });
     } catch {
@@ -85,7 +85,7 @@ export function createAuctionRouter(getDb) {
   router.post('/start', async (req, res) => {
     try {
       const result = await service.startGame(req.body || {});
-      if (result.error) return res.status(400).json({ ok: false, error: result.error });
+      if (result.error) return res.status(result.status || 400).json({ ok: false, error: result.error, quotaExceeded: Boolean(result.quotaExceeded) });
 
       const firstIds = (result.room.poolIds || []).slice(0, 2);
       await Promise.race([

@@ -453,10 +453,9 @@ export function createAuctionService(getDb) {
 
   async function runRoomTx(roomId, mutator) {
     const db = getDb();
-    const useMemory = !db || Date.now() < quotaCooldownUntil;
-    if (useMemory) {
+    if (!db) {
       const room = memoryRooms.get(roomId);
-      if (!room) return { error: 'Room not found.' };
+      if (!room) return { error: 'Room not found.', status: 404 };
       advanceTimeIfNeeded(room);
       const res = mutator(room);
       if (res?.error) return res;
@@ -465,11 +464,19 @@ export function createAuctionService(getDb) {
       return { room };
     }
 
+    if (Date.now() < quotaCooldownUntil) {
+      return {
+        error: 'Database daily quota reached (resets at midnight PT / ~1:30 PM IST). Upgrade to Blaze or try after reset.',
+        status: 503,
+        quotaExceeded: true
+      };
+    }
+
     const ref = db.collection(COLLECTION).doc(roomId);
     try {
       const out = await db.runTransaction(async (tx) => {
         const snap = await tx.get(ref);
-        if (!snap.exists) return { error: 'Room not found.' };
+        if (!snap.exists) return { error: 'Room not found.', status: 404 };
         const room = snap.data();
         const timeChanged = advanceTimeIfNeeded(room);
         const res = mutator(room);
@@ -488,16 +495,12 @@ export function createAuctionService(getDb) {
       return out;
     } catch (err) {
       if (isQuotaError(err)) {
-        quotaCooldownUntil = Date.now() + 120000;
-        const mem = memoryRooms.get(roomId);
-        if (mem) {
-          advanceTimeIfNeeded(mem);
-          const res = mutator(mem);
-          if (res?.error) return res;
-          if (!res?.noBump) mem.version = (mem.version || 0) + 1;
-          cacheRoom(mem);
-          return { room: mem };
-        }
+        quotaCooldownUntil = Date.now() + 30000;
+        return {
+          error: 'Database daily quota reached (resets at midnight PT / ~1:30 PM IST). Upgrade to Blaze or try after reset.',
+          status: 503,
+          quotaExceeded: true
+        };
       }
       throw err;
     }
@@ -542,7 +545,14 @@ export function createAuctionService(getDb) {
     });
 
     let room = null;
-    if (db && Date.now() >= quotaCooldownUntil) {
+    if (db) {
+      if (Date.now() < quotaCooldownUntil) {
+        return {
+          error: 'Database daily quota reached (resets at midnight PT / ~1:30 PM IST). Upgrade to Blaze or try after reset.',
+          status: 503,
+          quotaExceeded: true
+        };
+      }
       for (let i = 0; i < 6; i++) {
         const candidateId = generateFourDigitCode();
         const candidate = makeRoomObj(candidateId);
@@ -560,21 +570,23 @@ export function createAuctionService(getDb) {
         } catch (err) {
           if (err?.code === 6) continue;
           if (isQuotaError(err)) {
-            quotaCooldownUntil = Date.now() + 120000;
-            room = candidate;
-            break;
+            quotaCooldownUntil = Date.now() + 30000;
+            return {
+              error: 'Database daily quota reached (resets at midnight PT / ~1:30 PM IST). Upgrade to Blaze or try after reset.',
+              status: 503,
+              quotaExceeded: true
+            };
           }
           throw err;
         }
       }
-    }
-
-    if (!room) {
+    } else {
       let candidateId = generateFourDigitCode();
       while (memoryRooms.has(candidateId)) candidateId = generateFourDigitCode();
       room = makeRoomObj(candidateId);
     }
 
+    if (!room) return { error: 'Could not allocate room ID. Please try again.', status: 503 };
     cacheRoom(room);
     return { room, teamId };
   }
@@ -850,13 +862,21 @@ export function createAuctionService(getDb) {
 
   async function getState({ roomId, clientVersion }) {
     const db = getDb();
-    if (!db || Date.now() < quotaCooldownUntil) {
+    if (!db) {
       const room = memoryRooms.get(roomId);
-      if (!room) return { error: 'Room not found.' };
+      if (!room) return { error: 'Room not found.', status: 404 };
       const changed = advanceTimeIfNeeded(room);
       if (changed) cacheRoom(room);
       if (!changed && clientVersion && Number(clientVersion) === room.version) return { unchanged: true };
       return { room };
+    }
+
+    if (Date.now() < quotaCooldownUntil) {
+      return {
+        error: 'Database daily quota reached (resets at midnight PT / ~1:30 PM IST).',
+        status: 503,
+        quotaExceeded: true
+      };
     }
 
     let room = null;
@@ -869,19 +889,18 @@ export function createAuctionService(getDb) {
     } else {
       try {
         const snap = await db.collection(COLLECTION).doc(roomId).get();
-        if (!snap.exists) return { error: 'Room not found.' };
+        if (!snap.exists) return { error: 'Room not found.', status: 404 };
         room = snap.data();
         cacheRoom(room);
         ensureListener(db, roomId);
       } catch (err) {
         if (isQuotaError(err)) {
-          quotaCooldownUntil = Date.now() + 120000;
-          const mem = memoryRooms.get(roomId);
-          if (mem) {
-            const changed = advanceTimeIfNeeded(mem);
-            if (!changed && clientVersion && Number(clientVersion) === mem.version) return { unchanged: true };
-            return { room: mem };
-          }
+          quotaCooldownUntil = Date.now() + 30000;
+          return {
+            error: 'Database daily quota reached (resets at midnight PT / ~1:30 PM IST).',
+            status: 503,
+            quotaExceeded: true
+          };
         }
         throw err;
       }
