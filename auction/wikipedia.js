@@ -1,10 +1,37 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { fetchHallOfFamePlayer } from './halloffame.js';
 
-const CACHE_DIR = path.join(os.tmpdir(), 'ipl-wiki-cache-v3');
+const CACHE_DIR = path.join(os.tmpdir(), 'ipl-official-headshots-v2');
 const memoryCache = new Map();
 const inFlight = new Map();
+
+let cricbuzzIndex = null;
+let cricbuzzFetchedAt = 0;
+let cricbuzzInFlight = null;
+
+const CRICBUZZ_TEAM_URLS = [
+  'https://www.cricbuzz.com/cricket-team/chennai-super-kings/58/players',
+  'https://www.cricbuzz.com/cricket-team/mumbai-indians/62/players',
+  'https://www.cricbuzz.com/cricket-team/royal-challengers-bengaluru/59/players',
+  'https://www.cricbuzz.com/cricket-team/kolkata-knight-riders/63/players',
+  'https://www.cricbuzz.com/cricket-team/sunrisers-hyderabad/255/players',
+  'https://www.cricbuzz.com/cricket-team/rajasthan-royals/64/players',
+  'https://www.cricbuzz.com/cricket-team/delhi-capitals/61/players',
+  'https://www.cricbuzz.com/cricket-team/punjab-kings/65/players',
+  'https://www.cricbuzz.com/cricket-team/lucknow-super-giants/966/players',
+  'https://www.cricbuzz.com/cricket-team/gujarat-titans/971/players',
+  'https://www.cricbuzz.com/cricket-team/india/2/players',
+  'https://www.cricbuzz.com/cricket-team/australia/4/players',
+  'https://www.cricbuzz.com/cricket-team/england/9/players',
+  'https://www.cricbuzz.com/cricket-team/south-africa/11/players',
+  'https://www.cricbuzz.com/cricket-team/new-zealand/13/players',
+  'https://www.cricbuzz.com/cricket-team/west-indies/10/players',
+  'https://www.cricbuzz.com/cricket-team/sri-lanka/5/players',
+  'https://www.cricbuzz.com/cricket-team/afghanistan/96/players',
+  'https://www.cricbuzz.com/cricket-team/bangladesh/6/players'
+];
 
 function ensureCacheDir() {
   try {
@@ -33,16 +60,26 @@ export function buildFallbackSvg(player) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" width="320" height="320"><defs><linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="${c1}"/><stop offset="100%" stop-color="#090d1a"/></linearGradient></defs><rect width="320" height="320" fill="url(#bg)"/><circle cx="160" cy="118" r="52" fill="rgba(255,255,255,0.12)" stroke="${c2}" stroke-width="3"/><path d="M72 285 C72 215 248 215 248 285" fill="rgba(255,255,255,0.08)" stroke="${c2}" stroke-width="2.5"/><text x="160" y="134" text-anchor="middle" font-family="system-ui,sans-serif" font-size="40" font-weight="800" fill="#fff">${initials}</text><text x="160" y="265" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" font-weight="700" fill="#f8fafc">${roleLabel}</text><text x="160" y="294" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#94a3b8">${country}</text></svg>`;
 }
 
-async function fetchWithTimeout(url, timeoutMs = 4200, browserUa = false) {
+function normAlpha(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function toSlug(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/['.]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+async function fetchWithTimeout(url, timeoutMs = 4200) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, {
       signal: controller.signal,
       headers: {
-        'User-Agent': browserUa
-          ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36'
-          : 'IPL-Prime-Auction-Game/1.0 (https://knaray.com/auction_game)',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
         Accept: 'application/json,image/*,text/html,*/*'
       }
     });
@@ -54,67 +91,102 @@ async function fetchWithTimeout(url, timeoutMs = 4200, browserUa = false) {
 async function downloadImage(imgUrl) {
   if (!imgUrl) return null;
   const fullUrl = imgUrl.startsWith('//') ? `https:${imgUrl}` : imgUrl;
-  const isWiki = /wikimedia\.org|wikipedia\.org/i.test(fullUrl);
-  let res = await fetchWithTimeout(fullUrl, 4500, !isWiki);
-  if (!res.ok && isWiki) {
-    res = await fetchWithTimeout(fullUrl, 4500, true);
-  }
+  const res = await fetchWithTimeout(fullUrl, 4500);
   if (!res.ok) return null;
   const ct = res.headers.get('content-type') || '';
   if (!ct.startsWith('image/')) return null;
   const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length < 400) return null;
+  if (buf.length < 1000) return null;
   return { imageBuffer: buf, contentType: ct };
 }
 
-async function tryWikipediaTitle(title) {
-  if (!title) return null;
-  const enc = encodeURIComponent(title.replace(/\s+/g, '_'));
-  const sumRes = await fetchWithTimeout(`https://en.wikipedia.org/api/rest_v1/page/summary/${enc}`, 3500);
-  if (sumRes.ok) {
-    const data = await sumRes.json();
-    const imgUrl = data.thumbnail?.source || data.originalimage?.source;
-    if (imgUrl && !/\.svg(\?|$)/i.test(imgUrl)) {
-      const downloaded = await downloadImage(imgUrl);
-      if (downloaded) return downloaded;
-    }
+async function tryEspnCricinfoHeadshot(player) {
+  const srUrl = `https://site.web.api.espn.com/apis/common/v3/search?query=${encodeURIComponent(player.name)}&limit=6&type=player&sport=cricket`;
+  const res = await fetchWithTimeout(srUrl, 3800);
+  if (!res.ok) return null;
+  const data = await res.json();
+  const items = Array.isArray(data?.items) ? data.items : [];
+  if (items.length === 0) return null;
+
+  const targetNorm = normAlpha(player.name);
+  const countryLower = String(player.country || '').toLowerCase();
+
+  let chosen = items.find((item) => {
+    if (normAlpha(item.displayName) !== targetNorm) return false;
+    if (!countryLower || !Array.isArray(item.teamRelationships)) return true;
+    return item.teamRelationships.some((tr) => String(tr.displayName || '').toLowerCase().includes(countryLower));
+  });
+  if (!chosen) {
+    chosen = items.find((item) => normAlpha(item.displayName) === targetNorm);
+  }
+  if (!chosen?.id) return null;
+
+  const candidates = [];
+  if (chosen.headshot?.href && !/default-player-logo/i.test(chosen.headshot.href)) {
+    candidates.push(chosen.headshot.href);
+  }
+  const canonicalUrl = `https://a.espncdn.com/i/headshots/cricket/players/full/${chosen.id}.png`;
+  if (!candidates.includes(canonicalUrl)) {
+    candidates.push(canonicalUrl);
   }
 
-  const mlRes = await fetchWithTimeout(`https://en.wikipedia.org/api/rest_v1/page/media-list/${enc}`, 3500);
-  if (mlRes.ok) {
-    const ml = await mlRes.json();
-    const items = (ml?.items || []).filter(
-      (i) => i.type === 'image' && !/flag|icon|logo|cricket_ball|bat|pictogram|commons-logo|\.svg/i.test(i.title || '')
+  for (const url of candidates) {
+    const img = await downloadImage(url);
+    if (img) return img;
+  }
+  return null;
+}
+
+async function getCricbuzzIndex() {
+  if (cricbuzzIndex && Date.now() - cricbuzzFetchedAt < 12 * 60 * 60 * 1000) {
+    return cricbuzzIndex;
+  }
+  if (cricbuzzInFlight) return cricbuzzInFlight;
+
+  cricbuzzInFlight = (async () => {
+    const map = new Map();
+    await Promise.all(
+      CRICBUZZ_TEAM_URLS.map(async (url) => {
+        try {
+          const res = await fetchWithTimeout(url, 4000);
+          if (!res.ok) return;
+          const html = await res.text();
+          for (const m of html.matchAll(/https:\/\/static\.cricbuzz\.com\/a\/img\/v1\/i1\/(c\d+)\/([a-z0-9-]+)\.jpg/gi)) {
+            const slug = m[2].toLowerCase();
+            if (slug === 'i' || slug.includes('logo')) continue;
+            const imgUrl = `https://static.cricbuzz.com/a/img/v1/300x300/i1/${m[1]}/${m[2]}.jpg`;
+            if (!map.has(slug)) map.set(slug, imgUrl);
+            const normKey = normAlpha(slug);
+            if (!map.has(normKey)) map.set(normKey, imgUrl);
+          }
+        } catch {}
+      })
     );
-    const src = items[0]?.srcset?.[0]?.src;
-    if (src) {
-      const downloaded = await downloadImage(src);
-      if (downloaded) return downloaded;
+    if (map.size > 0) {
+      cricbuzzIndex = map;
+      cricbuzzFetchedAt = Date.now();
     }
-  }
-  return null;
+    return cricbuzzIndex || map;
+  })().finally(() => {
+    cricbuzzInFlight = null;
+  });
+
+  return cricbuzzInFlight;
 }
 
-async function tryWikipediaSearch(name) {
-  const srUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(`${name} cricketer`)}&srlimit=3&format=json`;
-  const res = await fetchWithTimeout(srUrl, 3500);
-  if (!res.ok) return null;
-  const json = await res.json();
-  for (const hit of json?.query?.search || []) {
-    const found = await tryWikipediaTitle(hit.title);
-    if (found) return found;
-  }
-  return null;
+async function tryCricbuzzHeadshot(player) {
+  const index = await getCricbuzzIndex();
+  const slug = toSlug(player.name);
+  const normKey = normAlpha(player.name);
+  const url = index.get(slug) || index.get(normKey);
+  if (!url) return null;
+  return downloadImage(url);
 }
 
-async function tryBingPortrait(name) {
-  const url = `https://www.bing.com/images/search?q=${encodeURIComponent(`${name} IPL cricketer portrait`)}`;
-  const res = await fetchWithTimeout(url, 4000, true);
-  if (!res.ok) return null;
-  const html = await res.text();
-  const match = html.match(/https:\/\/tse[0-9]+\.mm\.bing\.net\/th\/id\/[^"&\s<>]+|https:\/\/tse[0-9]+\.mm\.bing\.net\/th\?id=[^"&\s<>]+/);
-  if (!match?.[0]) return null;
-  return downloadImage(match[0]);
+async function tryHallOfFameHeadshot(player) {
+  const hof = await fetchHallOfFamePlayer(player);
+  if (!hof?.imageUrl) return null;
+  return downloadImage(hof.imageUrl);
 }
 
 export async function fetchPlayerFromWikipedia(player) {
@@ -132,7 +204,7 @@ export async function fetchPlayerFromWikipedia(player) {
       const meta = JSON.parse(fs.readFileSync(diskMetaPath, 'utf8'));
       const imageBuffer = meta.hasImage && fs.existsSync(diskImgPath) ? fs.readFileSync(diskImgPath) : null;
       if (imageBuffer) {
-        const entry = { imageBuffer, contentType: meta.contentType || 'image/jpeg', fetchedAt: meta.fetchedAt || Date.now() };
+        const entry = { imageBuffer, contentType: meta.contentType || 'image/png', fetchedAt: meta.fetchedAt || Date.now() };
         memoryCache.set(player.id, entry);
         return entry;
       }
@@ -144,14 +216,15 @@ export async function fetchPlayerFromWikipedia(player) {
   const promise = (async () => {
     let img = null;
     try {
-      img = await tryWikipediaTitle(player.wikiTitle || player.name);
-      if (!img) img = await tryWikipediaSearch(player.name);
-      if (!img) img = await tryBingPortrait(player.name);
+      // Strictly fetch verified portraits from ESPNcricinfo, Cricbuzz, or IPL Hall of Fame backup
+      img = await tryEspnCricinfoHeadshot(player);
+      if (!img) img = await tryCricbuzzHeadshot(player);
+      if (!img) img = await tryHallOfFameHeadshot(player);
     } catch {}
 
     const entry = {
       imageBuffer: img?.imageBuffer || null,
-      contentType: img?.contentType || 'image/jpeg',
+      contentType: img?.contentType || 'image/png',
       fetchedAt: Date.now()
     };
     memoryCache.set(player.id, entry);

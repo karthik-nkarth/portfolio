@@ -1,6 +1,7 @@
 import { m, AnimatePresence } from 'framer-motion';
 import { Icon } from '@iconify/react';
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 
 const Works = () => {
   const [currentPage, setCurrentPage] = useState(0);
@@ -117,12 +118,32 @@ const Works = () => {
       title: 'Google Ads Call Conversion Fix',
       tech: 'JavaScript / DOM',
       platform: 'Squarespace',
+      ctaLabel: 'View Details',
+      closeLabel: 'Close Case Study',
       shortDesc: 'A unified injection script that restores monkey-patched native JS functions to rescue failing Google Ads conversions.',
       imageIcon: '/wcc_logo.png',
       details: {
-        issue: "Google Ads Website Call Conversions (WCC) were failing on a Squarespace site. Google's tracking script relies on native JS methods (like Object.defineProperties) to safely scan the DOM, but Squarespace core scripts were 'monkey-patching' these methods, causing the Google script to silently crash before swapping the phone numbers.",
-        identification: "By deeply inspecting the browser's DevTools console, we found that calling Object.defineProperties.toString() returned a custom wrapper function instead of the native [native code]. This was the smoking gun proving the interference.",
-        resolution: 'Developed a "God-Mode" unified injector script. It waits for the page to fully load, injects a hidden iframe to resurrect the pure native JS functions, overwrites the monkey-patched versions, and then dynamically loads the Google Tag. We utilized the phone_conversion_callback to directly update customized, animated floating CTAs without needing visible bait text.',
+        sections: [
+          {
+            title: 'The Issue',
+            icon: 'hugeicons:alert-01',
+            iconColor: 'text-red-500',
+            text: "Google Ads Website Call Conversions (WCC) were failing on a Squarespace site. Google's tracking script relies on native JS methods (like Object.defineProperties) to safely scan the DOM, but Squarespace core scripts were 'monkey-patching' these methods, causing the Google script to silently crash before swapping the phone numbers."
+          },
+          {
+            title: 'Identification',
+            icon: 'hugeicons:search-01',
+            iconColor: 'text-orange-500',
+            text: "By deeply inspecting the browser's DevTools console, we found that calling Object.defineProperties.toString() returned a custom wrapper function instead of the native [native code]. This was the smoking gun proving the interference."
+          },
+          {
+            title: 'Resolution',
+            icon: 'hugeicons:tick-double-01',
+            iconColor: 'text-green-500',
+            text: 'Developed a "God-Mode" unified injector script. It waits for the page to fully load, injects a hidden iframe to resurrect the pure native JS functions, overwrites the monkey-patched versions, and then dynamically loads the Google Tag. We utilized the phone_conversion_callback to directly update customized, animated floating CTAs without needing visible bait text.'
+          }
+        ],
+        codeLabel: 'JS Template',
         code: `<script>
 window.addEventListener('load',function(){
   var id='AW-XXXXXXXXXX', lbl='YOUR_LABEL_HERE', num='0400 000 000';
@@ -133,6 +154,49 @@ window.addEventListener('load',function(){
   gtag('config',id+'/'+lbl,{'phone_conversion_number':num});
 });
 </script>`
+      }
+    },
+    {
+      id: 'custom-web-game',
+      title: 'Custom Web Based Game',
+      tech: 'React / Node / Firestore',
+      platform: 'IPL Prime Auction • Multiplayer App',
+      ctaLabel: 'View Details',
+      closeLabel: 'Close Overview',
+      playUrl: '/auction_game',
+      icon: 'hugeicons:game-controller-01',
+      shortDesc: 'A real-time multiplayer cricket auction arena featuring private PIN lobbies, live bidding timers, official player stats & portraits, and 12-criteria AI squad scoring.',
+      details: {
+        techTags: [
+          'React 18 + Vite',
+          'Express.js REST Engine',
+          'Cloud Firestore Transactions',
+          'Real-Time Snapshot Sync',
+          'Web Audio API',
+          'HTML5 Canvas Confetti',
+          'Official Headshot & Stats Proxies',
+          'Responsive 100dvh Mobile UI'
+        ],
+        sections: [
+          {
+            title: 'About the Game',
+            icon: 'hugeicons:sparkles',
+            iconColor: 'text-orange-500',
+            text: 'Built a real-time multiplayer IPL Prime Auction experience where 2 to 7 managers compete from desktop or mobile browsers to draft balanced 12-player squads (11 Playing XI + 1 Impact Player, max 4 Overseas) using a ₹50,000 INR purse across a 324-player prime-era database.'
+          },
+          {
+            title: 'How Gameplay Works',
+            icon: 'hugeicons:tick-double-01',
+            iconColor: 'text-green-500',
+            text: 'Hosts spin up private 4-digit Room ID + PIN rooms with dynamic lot sizes (40–100 players). Players bid via one-tap stepped increments (+₹100 to +₹1,000) protected by automated reserve limits, overseas cap auto-skipping, a 10-second live countdown with 2.5s high-ping grace sync, unsold Round 2 comebacks, manual Captain/Wicketkeeper/Impact locking, and an equal-weight 12-metric evaluation covering L/R batting & bowling combinations and all-rounder balance.'
+          },
+          {
+            title: 'Architecture & Performance Engineering',
+            icon: 'hugeicons:cpu',
+            iconColor: 'text-cyan-500',
+            text: 'Engineered with transactional Cloud Firestore room documents, server-side versioned polling + listener caching to minimize database reads, automatic inactive-room purging, localStorage mid-game crash rejoin, CORS-free backend proxies for official Cricinfo/Cricbuzz player headshots and T20 stats, and a zero-scroll 100dvh mobile layout.'
+          }
+        ]
       }
     }
   ];
@@ -343,11 +407,21 @@ window.addEventListener('load',function(){
                       </p>
                     </div>
 
-                    <div className="pt-6 border-t border-gray-200/60 dark:border-gray-800 relative z-20 flex items-center justify-between mt-auto">
+                    <div className="pt-6 border-t border-gray-200/60 dark:border-gray-800 relative z-20 flex items-center justify-between gap-4 mt-auto">
                       <span className="inline-flex items-center gap-2 text-orange-600 dark:text-cyan-400 font-bold transition-all group/link tracking-wide text-base">
-                        View Solution
+                        {project.ctaLabel || 'View Details'}
                         <Icon icon="hugeicons:arrow-right-01" className="w-5 h-5 group-hover/link:translate-x-1 transition-transform" />
                       </span>
+                      {project.playUrl && (
+                        <Link
+                          to={project.playUrl}
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-900 hover:bg-orange-600 dark:bg-white dark:hover:bg-cyan-400 text-white dark:text-gray-900 font-bold text-sm transition-all shadow-md hover:shadow-lg"
+                        >
+                          <Icon icon="hugeicons:play" className="w-4 h-4" />
+                          Play Game
+                        </Link>
+                      )}
                     </div>
                   </div>
                 </m.div>
@@ -503,48 +577,64 @@ window.addEventListener('load',function(){
               </div>
 
               <div className="space-y-8">
-                <div>
-                  <h4 className="text-lg font-bold flex items-center gap-2 text-gray-900 dark:text-white mb-3">
-                    <Icon icon="hugeicons:alert-01" className="text-red-500" /> The Issue
-                  </h4>
-                  <p className="text-gray-700 dark:text-gray-300 leading-relaxed bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-100 dark:border-gray-800">
-                    {selectedSpecialProject.details.issue}
-                  </p>
-                </div>
-                
-                <div>
-                  <h4 className="text-lg font-bold flex items-center gap-2 text-gray-900 dark:text-white mb-3">
-                    <Icon icon="hugeicons:search-01" className="text-orange-500" /> Identification
-                  </h4>
-                  <p className="text-gray-700 dark:text-gray-300 leading-relaxed bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-100 dark:border-gray-800">
-                    {selectedSpecialProject.details.identification}
-                  </p>
-                </div>
+                {Array.isArray(selectedSpecialProject.details.techTags) && (
+                  <div>
+                    <h4 className="text-sm font-mono font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-3">
+                      Technologies Used
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedSpecialProject.details.techTags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="px-3 py-1.5 rounded-full text-xs font-mono font-bold bg-orange-50 dark:bg-cyan-900/20 border border-orange-200 dark:border-cyan-500/30 text-orange-700 dark:text-cyan-300"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-                <div>
-                  <h4 className="text-lg font-bold flex items-center gap-2 text-gray-900 dark:text-white mb-3">
-                    <Icon icon="hugeicons:tick-double-01" className="text-green-500" /> Resolution
-                  </h4>
-                  <p className="text-gray-700 dark:text-gray-300 leading-relaxed bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-100 dark:border-gray-800 mb-4">
-                    {selectedSpecialProject.details.resolution}
-                  </p>
+                {(selectedSpecialProject.details.sections || []).map((section) => (
+                  <div key={section.title}>
+                    <h4 className="text-lg font-bold flex items-center gap-2 text-gray-900 dark:text-white mb-3">
+                      <Icon icon={section.icon} className={section.iconColor} /> {section.title}
+                    </h4>
+                    <p className="text-gray-700 dark:text-gray-300 leading-relaxed bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-100 dark:border-gray-800">
+                      {section.text}
+                    </p>
+                  </div>
+                ))}
+
+                {selectedSpecialProject.details.code && (
                   <div className="relative group">
                     <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <span className="px-3 py-1 bg-gray-800 text-xs text-gray-300 rounded font-mono">JS Template</span>
+                      <span className="px-3 py-1 bg-gray-800 text-xs text-gray-300 rounded font-mono">
+                        {selectedSpecialProject.details.codeLabel || 'Code'}
+                      </span>
                     </div>
                     <pre className="bg-[#0d1117] text-[#c9d1d9] p-4 sm:p-6 rounded-xl overflow-x-auto text-xs sm:text-sm font-mono border border-gray-800 shadow-inner">
                       <code>{selectedSpecialProject.details.code}</code>
                     </pre>
                   </div>
-                </div>
+                )}
               </div>
 
-              <div className="mt-8 flex justify-end">
+              <div className="mt-8 flex flex-wrap justify-end gap-3">
+                {selectedSpecialProject.playUrl && (
+                  <Link
+                    to={selectedSpecialProject.playUrl}
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-orange-600 hover:bg-orange-700 dark:bg-cyan-500 dark:hover:bg-cyan-400 text-white dark:text-gray-900 font-bold rounded-xl transition-all shadow-lg"
+                  >
+                    <Icon icon="hugeicons:play" className="w-5 h-5" />
+                    Play Game
+                  </Link>
+                )}
                 <button
                   onClick={() => setIsSpecialProjectModalOpen(false)}
                   className="px-6 py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl hover:opacity-90 transition-opacity shadow-lg"
                 >
-                  Close Case Study
+                  {selectedSpecialProject.closeLabel || 'Close'}
                 </button>
               </div>
             </m.div>

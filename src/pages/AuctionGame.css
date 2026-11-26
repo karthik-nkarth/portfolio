@@ -187,7 +187,7 @@
 .ag-brand-title { font-size: 1rem; white-space: nowrap; }
 .ag-lot-label { color: #94a3b8; font-size: 0.82rem; font-weight: 600; white-space: nowrap; }
 .ag-topbar-utils-mob { display: none; align-items: center; gap: 6px; margin-left: auto; }
-.ag-purse-mob { display: none; }
+.ag-purse-mob.ag-purse-pill { display: none; }
 .ag-ping-chip { font-family: ui-monospace, monospace; font-size: 0.68rem; font-weight: 700; }
 .ag-creds {
   display: inline-flex; align-items: center; gap: 8px; background: rgba(30, 41, 59, 0.7);
@@ -499,6 +499,97 @@
   padding: 2px 8px;
 }
 
+.ag-mini-card {
+  width: 100%;
+  max-width: 410px;
+  padding: 14px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.ag-mini-face {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  padding: 14px;
+  background: linear-gradient(155deg, rgba(30, 41, 59, 0.88) 0%, rgba(9, 13, 24, 0.96) 72%, rgba(30, 27, 75, 0.72) 100%);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+.ag-mini-hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.ag-mini-portrait {
+  width: 78px;
+  height: 78px;
+  border-radius: 18px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 2px solid rgba(251, 191, 36, 0.7);
+  background: #090d16;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
+}
+.ag-mini-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  display: block;
+}
+
+.ag-mini-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.ag-mini-name {
+  margin: 0 0 3px;
+  font-size: 1.28rem;
+  font-weight: 900;
+  line-height: 1.15;
+  color: #f8fafc;
+}
+
+.ag-mini-price {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.38);
+  color: #6ee7b7;
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.ag-mini-styles {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.ag-mini-style-chip {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ag-mini-stats {
+  position: relative;
+  gap: 6px;
+}
+
 @media (max-width: 1024px) {
   .ag-auction-grid { grid-template-columns: 1fr; }
   .ag-teams-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
@@ -517,7 +608,7 @@
 
   .ag-topbar-desktop-right { display: none; }
   .ag-topbar-utils-mob { display: inline-flex; }
-  .ag-purse-mob { display: inline-flex; }
+  .ag-purse-mob.ag-purse-pill { display: inline-flex; }
 
   .ag-topbar {
     flex-direction: column;

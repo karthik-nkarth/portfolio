@@ -1,8 +1,9 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { fetchHallOfFamePlayer } from './halloffame.js';
 
-const CACHE_DIR = path.join(os.tmpdir(), 'ipl-cricinfo-cache');
+const CACHE_DIR = path.join(os.tmpdir(), 'ipl-cricinfo-cache-v2');
 const statsCache = new Map();
 const inFlight = new Map();
 
@@ -112,6 +113,20 @@ export async function fetchCricinfoStats(player) {
         }
       }
     } catch {}
+
+    if (!updated) {
+      try {
+        const hof = await fetchHallOfFamePlayer(player);
+        if (hof?.stats) {
+          updated = {
+            cricinfoId: null,
+            source: 'iplhalloffame',
+            fetchedAt: Date.now(),
+            stats: hof.stats
+          };
+        }
+      } catch {}
+    }
 
     const result = updated || {
       cricinfoId: null,

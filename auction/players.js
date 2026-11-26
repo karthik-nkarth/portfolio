@@ -398,9 +398,22 @@ function expandPlayer(row) {
   };
 }
 
-const ALL_PLAYERS = [...RAW_PLAYERS, ...EXTRA_INDIAN_PLAYERS]
+const EXPANDED_POOL = [...RAW_PLAYERS, ...EXTRA_INDIAN_PLAYERS]
   .filter((row) => row[10] !== 'SkipPlaceholder')
   .map(expandPlayer);
+
+// Curate balanced 160-player prime pool (104 Indian + 56 Overseas)
+const CURATED_INDIAN = EXPANDED_POOL
+  .filter((p) => !p.isOverseas)
+  .sort((a, b) => b.ratings.overall - a.ratings.overall)
+  .slice(0, 104);
+
+const CURATED_OVERSEAS = EXPANDED_POOL
+  .filter((p) => p.isOverseas)
+  .sort((a, b) => b.ratings.overall - a.ratings.overall)
+  .slice(0, 56);
+
+const ALL_PLAYERS = [...CURATED_INDIAN, ...CURATED_OVERSEAS];
 
 function shuffle(arr) {
   const copy = [...arr];

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './AuctionGame.css';
 
-const APP_VERSION = 'v1.2';
+const APP_VERSION = 'v1.4';
 const formatINR = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
 
 function formatClock(ms) {
@@ -1009,7 +1009,7 @@ function AuctionGameInner() {
 
                   <div className="ag-centerpiece">
                     <div className="ag-portrait">
-                      <img key={p.id} src={`/api/auction/player-image/${encodeURIComponent(p.id)}`} alt={p.name} />
+                      <img key={p.id} src={`/api/auction/player-image/${encodeURIComponent(p.id)}?v=4`} alt={p.name} />
                     </div>
                     <div className="ag-player-meta">
                       <h2 className="ag-player-name">{p.name}</h2>
@@ -1334,9 +1334,9 @@ function AuctionGameInner() {
         const bowlLabel = inspectedPlayer.bowlingStyle && inspectedPlayer.bowlingStyle !== 'None' ? inspectedPlayer.bowlingStyle : 'Non-Bowler';
         return (
           <div className="ag-modal-bg" style={{ zIndex: 95 }} onClick={() => setInspectedPlayer(null)}>
-            <div className="ag-card ag-game-card" style={{ maxWidth: 420, width: '100%' }} onClick={(e) => e.stopPropagation()}>
+            <div className="ag-card ag-mini-card" onClick={(e) => e.stopPropagation()}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <span className="ag-pill ag-pill-era">{inspectedPlayer.era}</span>
                   <span className={`ag-pill ${inspectedPlayer.isOverseas ? 'ag-pill-os' : 'ag-pill-ind'}`}>
                     {inspectedPlayer.isOverseas ? `OS (${inspectedPlayer.country})` : 'INDIAN'}
@@ -1344,23 +1344,25 @@ function AuctionGameInner() {
                 </div>
                 <button type="button" className="ag-icon-btn" onClick={() => setInspectedPlayer(null)}>✕</button>
               </div>
-              <div className="ag-card-face" style={{ marginBottom: 0 }}>
+              <div className="ag-mini-face">
                 <div className="ag-spotlight" />
-                <div className="ag-centerpiece">
-                  <div className="ag-portrait" style={{ width: 96, height: 96 }}>
-                    <img key={inspectedPlayer.id} src={`/api/auction/player-image/${encodeURIComponent(inspectedPlayer.id)}`} alt={inspectedPlayer.name} />
+                <div className="ag-mini-hero">
+                  <div className="ag-mini-portrait">
+                    <img key={inspectedPlayer.id} src={`/api/auction/player-image/${encodeURIComponent(inspectedPlayer.id)}?v=4`} alt={inspectedPlayer.name} />
                   </div>
-                  <h2 className="ag-player-name" style={{ fontSize: '1.4rem' }}>{inspectedPlayer.name}</h2>
-                  <div className="ag-muted" style={{ marginBottom: 6 }}>{inspectedPlayer.role} • {inspectedPlayer.country}</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 6, marginBottom: 8 }}>
-                    <span className="ag-lr-chip" style={{ color: '#fde68a' }}>{batLabel}</span>
-                    <span className="ag-lr-chip" style={{ color: '#7dd3fc' }}>{bowlLabel}</span>
+                  <div className="ag-mini-info">
+                    <h2 className="ag-mini-name">{inspectedPlayer.name}</h2>
+                    <div className="ag-muted" style={{ fontSize: '0.82rem' }}>{inspectedPlayer.role} • {inspectedPlayer.country}</div>
                     {inspectedPlayer.boughtPrice ? (
-                      <span className="ag-lr-chip" style={{ color: '#6ee7b7' }}>Drafted {formatINR(inspectedPlayer.boughtPrice)}</span>
+                      <span className="ag-mini-price">Drafted {formatINR(inspectedPlayer.boughtPrice)}</span>
                     ) : null}
                   </div>
                 </div>
-                <div className="ag-stats-grid">
+                <div className="ag-mini-styles">
+                  <span className="ag-mini-style-chip" style={{ color: '#fde68a' }}>{batLabel}</span>
+                  <span className="ag-mini-style-chip" style={{ color: '#7dd3fc' }}>{bowlLabel}</span>
+                </div>
+                <div className="ag-stats-grid ag-mini-stats">
                   <div className="ag-stat-box"><span>MAT</span><strong>{st?.matches || '-'}</strong></div>
                   <div className="ag-stat-box"><span>RUNS</span><strong>{st?.runs || '-'}</strong></div>
                   <div className="ag-stat-box"><span>SR</span><strong>{st?.strikeRate ? Number(st.strikeRate).toFixed(1) : '-'}</strong></div>
