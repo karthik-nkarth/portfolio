@@ -289,7 +289,11 @@ export default function AuctionGame() {
 
     async function scheduleNext(customMs = null) {
       if (!alive) return;
-      const baseMs = state?.phase === 'AUCTION' || state?.phase === 'LOT_RESULT' ? 750 : 1800;
+      if (document.hidden) {
+        timerId = setTimeout(() => scheduleNext(), 2500);
+        return;
+      }
+      const baseMs = state?.phase === 'AUCTION' || state?.phase === 'LOT_RESULT' ? 900 : 2500;
       const waitMs = customMs ?? baseMs;
       timerId = setTimeout(runPoll, waitMs);
     }
@@ -333,9 +337,17 @@ export default function AuctionGame() {
       }
     }
 
+    const onVis = () => {
+      if (!document.hidden && alive) {
+        if (timerId) clearTimeout(timerId);
+        runPoll();
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
     runPoll();
     return () => {
       alive = false;
+      document.removeEventListener('visibilitychange', onVis);
       if (timerId) clearTimeout(timerId);
     };
   }, [roomId, teamId, state?.phase]);

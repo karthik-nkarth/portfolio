@@ -87,9 +87,12 @@ export function createAuctionRouter(getDb) {
       const result = await service.startGame(req.body || {});
       if (result.error) return res.status(400).json({ ok: false, error: result.error });
 
-      const firstBatch = (result.room.pool || []).slice(0, 2);
+      const firstIds = (result.room.poolIds || []).slice(0, 2);
       await Promise.race([
-        Promise.all(firstBatch.map((p) => fetchCricinfoStats(p).then((r) => { if (r?.stats) p.stats = r.stats; }))),
+        Promise.all(firstIds.map((id) => {
+          const pl = PLAYER_MAP.get(id);
+          return pl ? fetchCricinfoStats(pl).then((r) => { if (r?.stats) pl.stats = r.stats; }) : Promise.resolve();
+        })),
         new Promise((resolve) => setTimeout(resolve, 1800))
       ]);
 
