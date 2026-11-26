@@ -8,6 +8,7 @@ const MAX_OVERSEAS = 4;
 const MIN_RESERVE_PER_SLOT = 300;
 const IDLE_TIMER_MS = 120000;
 const BID_TIMER_MS = 10000;
+const BID_GRACE_MS = 1200;
 const LOT_RESULT_PAUSE_MS = 3300;
 const COLLECTION = 'auction_rooms';
 
@@ -35,6 +36,13 @@ function generateFourDigitCode() {
 
 function generateToken() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+function getMinIncrementForBidCount(bidCount) {
+  if (bidCount >= 15) return 1000;
+  if (bidCount >= 10) return 500;
+  if (bidCount >= 5) return 200;
+  return 100;
 }
 
 function getMaxBidAllowed(team) {
@@ -142,7 +150,13 @@ function advanceToNextLot(room) {
   room.idleEndsAt = Date.now() + IDLE_TIMER_MS;
   room.timerEndsAt = null;
   room.lotResultEndsAt = null;
-  room.skippedTeamIds = [];
+  room.skippedTeamIds = room.teams
+    .filter((t) =>
+      t.quit ||
+      t.squad.length >= MAX_SQUAD_SIZE ||
+      (room.currentPlayer.isOverseas && t.overseasCount >= MAX_OVERSEAS)
+    )
+    .map((t) => t.id);
   room.bidHistory = [];
   room.lastLotOutcome = null;
   for (const t of room.teams) t.currentLotBid = null;
@@ -156,9 +170,9 @@ function advanceTimeIfNeeded(room) {
   const now = Date.now();
   let changed = false;
   if (room.phase === 'AUCTION') {
-    if (room.timerEndsAt && now >= room.timerEndsAt) {
+    if (room.timerEndsAt && now >= room.timerEndsAt + BID_GRACE_MS) {
       if (resolveCurrentLot(room, '10-second countdown completed')) changed = true;
-    } else if (!room.timerEndsAt && room.highestBid === null && room.idleEndsAt && now >= room.idleEndsAt) {
+    } else if (!room.timerEndsAt && room.highestBid === null && room.idleEndsAt && now >= room.idleEndsAt + BID_GRACE_MS) {
       if (resolveCurrentLot(room, '2-minute display limit expired (no bids)')) changed = true;
     }
   }
@@ -186,8 +200,8 @@ function scoreSingleTeam(team) {
       roles: { captain: null, wicketkeeper: null, impactPlayer: null },
       scores: {
         topOrderBatting: 0, middleOrderBatting: 0, lowerOrderBatting: 0,
-        paceBowling: 0, spinBowling: 0, overallBalance: 0,
-        captaincy: 0, wicketkeeping: 0, impactPlayer: 0, fieldingQuality: 0
+        paceBowling: 0, spinBowling: 0, allRounderAdvantage: 0, lrCombination: 0,
+        overallBalance: 0, captaincy: 0, wicketkeeping: 0, impactPlayer: 0, fieldingQuality: 0
       },
       totalScore: 0,
       averageScore: 0,
@@ -202,23 +216,57 @@ function scoreSingleTeam(team) {
     return Math.round(sum / n);
   };
 
-  const topOrderBatting = avgTopN(squad.map((p) => p.ratings.topOrder), 3);
-  const middleOrderBatting = avgTopN(squad.map((p) => p.ratings.middleOrder), 3);
-  const lowerOrderBatting = avgTopN(squad.map((p) => p.ratings.lowerOrder), 3);
-  const paceBowling = avgTopN(squad.map((p) => p.ratings.paceBowling), 3);
-  const spinBowling = avgTopN(squad.map((p) => p.ratings.spinBowling), 2);
+  const lhbBatters = squad.filter((p) => p.battingStyle === 'LHB' && (p.ratings.batting || 0) >= 68).length;
+  const rhbBatters = squad.filter((p) => p.battingStyle === 'RHB' && (p.ratings.batting || 0) >= 68).length;
+  const batComboMin = Math.min(lhbBatters, rhbBatters);
+  const batComboPts = batComboMin >= 3 ? 50 : batComboMin === 2 ? 42 : batComboMin === 1 ? 28 : 10;
 
-  const completeness = (Math.min(squad.length, MAX_SQUAD_SIZE) / MAX_SQUAD_SIZE) * 40;
+  const isLeftArmBowler = (p) => /left-arm|slow left/i.test(p.bowlingStyle || '');
+  const activeBowlers = squad.filter((p) => Math.max(p.ratings.paceBowling || 0, p.ratings.spinBowling || 0) >= 65);
+  const leftArmBowlers = activeBowlers.filter(isLeftArmBowler).length;
+  const rightArmBowlers = activeBowlers.filter((p) => !isLeftArmBowler(p) && p.bowlingStyle && p.bowlingStyle !== 'None').length;
+  const bowlComboMin = Math.min(leftArmBowlers, rightArmBowlers);
+  const bowlComboPts = bowlComboMin >= 2 ? 50 : bowlComboMin === 1 ? 36 : 12;
+  const lrCombination = Math.min(100, batComboPts + bowlComboPts);
+
+  const batComboBoost = batComboMin >= 2 ? 3 : batComboMin === 1 ? 1 : 0;
+  const paceComboBoost = activeBowlers.some((p) => p.ratings.paceBowling >= 70 && isLeftArmBowler(p)) &&
+    activeBowlers.some((p) => p.ratings.paceBowling >= 70 && !isLeftArmBowler(p)) ? 4 : 0;
+  const spinComboBoost = activeBowlers.some((p) => p.ratings.spinBowling >= 70 && isLeftArmBowler(p)) &&
+    activeBowlers.some((p) => p.ratings.spinBowling >= 70 && !isLeftArmBowler(p)) ? 4 : 0;
+
+  const topOrderBatting = Math.min(100, avgTopN(squad.map((p) => p.ratings.topOrder), 3) + batComboBoost);
+  const middleOrderBatting = Math.min(100, avgTopN(squad.map((p) => p.ratings.middleOrder), 3) + batComboBoost);
+  const lowerOrderBatting = avgTopN(squad.map((p) => p.ratings.lowerOrder), 3);
+  const paceBowling = Math.min(100, avgTopN(squad.map((p) => p.ratings.paceBowling), 3) + paceComboBoost);
+  const spinBowling = Math.min(100, avgTopN(squad.map((p) => p.ratings.spinBowling), 2) + spinComboBoost);
+
+  const twoWayAllRounders = squad
+    .map((p) => {
+      const bestBowl = Math.max(p.ratings.paceBowling || 0, p.ratings.spinBowling || 0);
+      const bat = p.ratings.batting || 0;
+      const isTrueAR = p.role === 'All-Rounder' || (bat >= 58 && bestBowl >= 58);
+      if (!isTrueAR) return 0;
+      return Math.min(bat, bestBowl) * 0.55 + ((bat + bestBowl) / 2) * 0.45;
+    })
+    .filter((v) => v > 0)
+    .sort((a, b) => b - a);
+
+  const arTop3Avg = twoWayAllRounders.length > 0
+    ? (twoWayAllRounders.slice(0, 3).reduce((s, v) => s + v, 0) / 3)
+    : 15;
+  const arDepthBonus = Math.min(18, twoWayAllRounders.length * 5);
+  const allRounderAdvantage = Math.min(100, Math.round(arTop3Avg * 0.85 + arDepthBonus));
+
+  const completeness = (Math.min(squad.length, MAX_SQUAD_SIZE) / MAX_SQUAD_SIZE) * 38;
   const pureOrAllPace = squad.filter((p) => p.ratings.paceBowling >= 70).length;
   const pureOrAllSpin = squad.filter((p) => p.ratings.spinBowling >= 70).length;
   const solidBatters = squad.filter((p) => p.ratings.batting >= 75).length;
-  const allRounders = squad.filter((p) => p.role === 'All-Rounder').length;
   const keepers = squad.filter((p) => p.ratings.wicketkeeping >= 75).length;
-  const hasLhb = squad.some((p) => p.battingStyle === 'LHB');
-  const hasRhb = squad.some((p) => p.battingStyle === 'RHB');
 
-  const balanceRaw = completeness + Math.min(15, solidBatters * 3) + Math.min(14, pureOrAllPace * 5) +
-    Math.min(12, pureOrAllSpin * 6) + Math.min(9, allRounders * 4.5) + (keepers >= 1 ? 6 : 0) + (hasLhb && hasRhb ? 4 : 1);
+  const balanceRaw = completeness + Math.min(14, solidBatters * 2.8) + Math.min(13, pureOrAllPace * 4.5) +
+    Math.min(11, pureOrAllSpin * 5.5) + Math.min(9, twoWayAllRounders.length * 4) + (keepers >= 1 ? 6 : 0) +
+    (batComboMin >= 1 ? 4 : 0) + (bowlComboMin >= 1 ? 5 : 0);
   const overallBalance = Math.min(100, Math.round(balanceRaw));
 
   const captain = squad.find((p) => p.id === team.roles.captainId) || squad[0];
@@ -234,17 +282,18 @@ function scoreSingleTeam(team) {
 
   const scores = {
     topOrderBatting, middleOrderBatting, lowerOrderBatting, paceBowling, spinBowling,
-    overallBalance, captaincy, wicketkeeping, impactPlayer, fieldingQuality
+    allRounderAdvantage, lrCombination, overallBalance, captaincy, wicketkeeping, impactPlayer, fieldingQuality
   };
 
   const totalScore = Object.values(scores).reduce((sum, val) => sum + val, 0);
-  const averageScore = Number((totalScore / 10).toFixed(1));
+  const averageScore = Number((totalScore / 12).toFixed(1));
   const avgOverall = Math.round(squad.reduce((sum, p) => sum + p.ratings.overall, 0) / squad.length);
 
   const entries = [
     ['Top Order', topOrderBatting], ['Middle Order', middleOrderBatting], ['Lower Order', lowerOrderBatting],
-    ['Pace Attack', paceBowling], ['Spin Attack', spinBowling], ['Balance', overallBalance],
-    ['Captaincy', captaincy], ['Wicketkeeping', wicketkeeping], ['Impact Sub', impactPlayer], ['Fielding', fieldingQuality]
+    ['Pace Attack', paceBowling], ['Spin Attack', spinBowling], ['All-Rounders', allRounderAdvantage],
+    ['L/R Combo', lrCombination], ['Balance', overallBalance], ['Captaincy', captaincy],
+    ['Wicketkeeping', wicketkeeping], ['Impact Sub', impactPlayer], ['Fielding', fieldingQuality]
   ].sort((a, b) => b[1] - a[1]);
 
   return {
@@ -291,6 +340,7 @@ export function serializeRoom(room, viewerTeamId = null) {
 
   return {
     version: room.version || 1,
+    serverNow: now,
     roomId: room.roomId,
     password: room.password,
     phase: room.phase,
@@ -304,6 +354,7 @@ export function serializeRoom(room, viewerTeamId = null) {
     highestBidderId: room.highestBidderId,
     highestBidderName: room.teams.find((t) => t.id === room.highestBidderId)?.name || null,
     bidCount: room.bidCount || 0,
+    minIncrement: getMinIncrementForBidCount(room.bidCount || 0),
     idleEndsAt: room.idleEndsAt || null,
     timerEndsAt: room.timerEndsAt || null,
     timerMsLeft: room.timerEndsAt ? Math.max(0, room.timerEndsAt - now) : null,
@@ -333,33 +384,101 @@ export function serializeRoom(room, viewerTeamId = null) {
 }
 
 export function createAuctionService(getDb) {
+  const roomCache = new Map();
+  const roomListeners = new Map();
+  const timeAdvanceInFlight = new Map();
+  let quotaCooldownUntil = 0;
+
+  const isQuotaError = (err) =>
+    err?.code === 8 || /quota|resource_exhausted/i.test(err?.message || '');
+
+  function cacheRoom(room) {
+    if (!room?.roomId) return;
+    const copy = structuredClone(room);
+    memoryRooms.set(room.roomId, copy);
+    roomCache.set(room.roomId, { room: copy, cachedAt: Date.now() });
+  }
+
+  function ensureListener(db, roomId) {
+    if (!db || Date.now() < quotaCooldownUntil) return;
+    const existing = roomListeners.get(roomId);
+    if (existing) {
+      existing.lastAccess = Date.now();
+      return;
+    }
+    try {
+      const ref = db.collection(COLLECTION).doc(roomId);
+      const unsub = ref.onSnapshot(
+        (snap) => {
+          if (snap.exists) cacheRoom(snap.data());
+        },
+        (err) => {
+          if (isQuotaError(err)) quotaCooldownUntil = Date.now() + 120000;
+          try { unsub(); } catch {}
+          roomListeners.delete(roomId);
+        }
+      );
+      roomListeners.set(roomId, { unsub, lastAccess: Date.now() });
+      // Prune stale listeners after 2 minutes of inactivity
+      for (const [id, entry] of roomListeners.entries()) {
+        if (Date.now() - entry.lastAccess > 120000) {
+          try { entry.unsub(); } catch {}
+          roomListeners.delete(id);
+        }
+      }
+    } catch {}
+  }
+
   async function runRoomTx(roomId, mutator) {
     const db = getDb();
-    if (!db) {
+    const useMemory = !db || Date.now() < quotaCooldownUntil;
+    if (useMemory) {
       const room = memoryRooms.get(roomId);
       if (!room) return { error: 'Room not found.' };
       advanceTimeIfNeeded(room);
       const res = mutator(room);
       if (res?.error) return res;
-      room.version = (room.version || 0) + 1;
+      if (!res?.noBump) room.version = (room.version || 0) + 1;
+      cacheRoom(room);
       return { room };
     }
 
     const ref = db.collection(COLLECTION).doc(roomId);
-    return db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) return { error: 'Room not found.' };
-      const room = snap.data();
-      const timeChanged = advanceTimeIfNeeded(room);
-      const res = mutator(room);
-      if (res?.error) {
-        if (timeChanged) tx.set(ref, room);
-        return res;
+    try {
+      const out = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) return { error: 'Room not found.' };
+        const room = snap.data();
+        const timeChanged = advanceTimeIfNeeded(room);
+        const res = mutator(room);
+        if (res?.error) {
+          if (timeChanged) tx.set(ref, room);
+          return res;
+        }
+        if (!res?.noBump) room.version = (room.version || 0) + 1;
+        if (!res?.noBump || timeChanged) tx.set(ref, room);
+        return { room };
+      });
+      if (out?.room) {
+        cacheRoom(out.room);
+        ensureListener(db, roomId);
       }
-      if (!res?.noBump) room.version = (room.version || 0) + 1;
-      if (!res?.noBump || timeChanged) tx.set(ref, room);
-      return { room };
-    });
+      return out;
+    } catch (err) {
+      if (isQuotaError(err)) {
+        quotaCooldownUntil = Date.now() + 120000;
+        const mem = memoryRooms.get(roomId);
+        if (mem) {
+          advanceTimeIfNeeded(mem);
+          const res = mutator(mem);
+          if (res?.error) return res;
+          if (!res?.noBump) mem.version = (mem.version || 0) + 1;
+          cacheRoom(mem);
+          return { room: mem };
+        }
+      }
+      throw err;
+    }
   }
 
   async function createRoom({ hostName }) {
@@ -368,11 +487,16 @@ export function createAuctionService(getDb) {
 
     const db = getDb();
     let roomId = generateFourDigitCode();
-    if (db) {
-      for (let i = 0; i < 10; i++) {
-        const snap = await db.collection(COLLECTION).doc(roomId).get();
-        if (!snap.exists) break;
-        roomId = generateFourDigitCode();
+    const useDb = db && Date.now() >= quotaCooldownUntil;
+    if (useDb) {
+      try {
+        for (let i = 0; i < 6; i++) {
+          const snap = await db.collection(COLLECTION).doc(roomId).get();
+          if (!snap.exists) break;
+          roomId = generateFourDigitCode();
+        }
+      } catch (err) {
+        if (isQuotaError(err)) quotaCooldownUntil = Date.now() + 120000;
       }
     } else {
       while (memoryRooms.has(roomId)) roomId = generateFourDigitCode();
@@ -399,6 +523,7 @@ export function createAuctionService(getDb) {
       lotResultEndsAt: null,
       skippedTeamIds: [],
       bidHistory: [],
+      recentActionIds: [],
       lastLotOutcome: null,
       analysis: null,
       createdAt: Date.now(),
@@ -410,8 +535,16 @@ export function createAuctionService(getDb) {
       }]
     };
 
-    if (db) await db.collection(COLLECTION).doc(roomId).set(room);
-    else memoryRooms.set(roomId, room);
+    if (db && Date.now() >= quotaCooldownUntil) {
+      try {
+        await db.collection(COLLECTION).doc(roomId).set(room);
+        ensureListener(db, roomId);
+      } catch (err) {
+        if (isQuotaError(err)) quotaCooldownUntil = Date.now() + 120000;
+        else throw err;
+      }
+    }
+    cacheRoom(room);
 
     return { room, teamId };
   }
@@ -521,8 +654,11 @@ export function createAuctionService(getDb) {
     });
   }
 
-  async function placeBid({ roomId, teamId, amount }) {
+  async function placeBid({ roomId, teamId, amount, actionId }) {
     return runRoomTx(roomId, (room) => {
+      if (actionId && (room.recentActionIds || []).includes(actionId)) {
+        return { noBump: true };
+      }
       if (room.phase !== 'AUCTION' || !room.currentPlayer) return { error: 'Bidding is not active right now.' };
       const team = room.teams.find((t) => t.id === teamId);
       if (!team || team.quit) return { error: 'You are not active in this room.' };
@@ -534,12 +670,15 @@ export function createAuctionService(getDb) {
       if (room.highestBidderId === team.id) return { error: 'You already hold the highest bid!' };
 
       const val = Math.floor(Number(amount));
-      if (!Number.isFinite(val) || val <= 0) return { error: 'Enter a valid positive bid amount.' };
+      if (!Number.isFinite(val) || val <= 0) return { error: 'Invalid bid amount.' };
       if (room.highestBid === null && val < room.currentPlayer.basePrice) {
         return { error: `Opening bid must be at least ₹${room.currentPlayer.basePrice.toLocaleString('en-IN')}.` };
       }
-      if (room.highestBid !== null && val <= room.highestBid) {
-        return { error: `Your bid must be higher than ₹${room.highestBid.toLocaleString('en-IN')}.` };
+      if (room.highestBid !== null) {
+        const minInc = getMinIncrementForBidCount(room.bidCount || 0);
+        if (val < room.highestBid + minInc) {
+          return { error: `Minimum increment at this stage is +₹${minInc.toLocaleString('en-IN')} (next min ₹${(room.highestBid + minInc).toLocaleString('en-IN')}).` };
+        }
       }
 
       const maxAllowed = getMaxBidAllowed(team);
@@ -548,6 +687,10 @@ export function createAuctionService(getDb) {
         return {
           error: `Cannot buy! Max bid limit reached (₹${maxAllowed.toLocaleString('en-IN')}) — you still need ${remainingSlots + 1} player${remainingSlots + 1 > 1 ? 's' : ''} (₹${MIN_RESERVE_PER_SLOT} reserve × ${remainingSlots} slots).`
         };
+      }
+
+      if (actionId) {
+        room.recentActionIds = [actionId, ...(room.recentActionIds || [])].slice(0, 30);
       }
 
       team.currentLotBid = val;
@@ -562,20 +705,28 @@ export function createAuctionService(getDb) {
       ].slice(0, 12);
 
       const skipped = new Set(room.skippedTeamIds || []);
+      const nextMin = getMinIncrementForBidCount(room.bidCount);
       const otherActive = getEligibleTeams(room).filter(
-        (t) => t.id !== team.id && !skipped.has(t.id) && getMaxBidAllowed(t) > val
+        (t) => t.id !== team.id && !skipped.has(t.id) && getMaxBidAllowed(t) >= val + nextMin
       );
       if (otherActive.length === 0) resolveCurrentLot(room, 'All other teams passed');
       return {};
     });
   }
 
-  async function skipLot({ roomId, teamId }) {
+  async function skipLot({ roomId, teamId, actionId }) {
     return runRoomTx(roomId, (room) => {
+      if (actionId && (room.recentActionIds || []).includes(actionId)) {
+        return { noBump: true };
+      }
       if (room.phase !== 'AUCTION' || !room.currentPlayer) return { error: 'No active player to skip.' };
       const team = room.teams.find((t) => t.id === teamId);
       if (!team || team.quit) return { error: 'Team not found.' };
       if (room.highestBidderId === team.id) return { error: 'You cannot skip while you hold the highest bid!' };
+
+      if (actionId) {
+        room.recentActionIds = [actionId, ...(room.recentActionIds || [])].slice(0, 30);
+      }
 
       const skipped = new Set(room.skippedTeamIds || []);
       skipped.add(team.id);
@@ -585,8 +736,9 @@ export function createAuctionService(getDb) {
       if (room.highestBid === null) {
         if (!eligible.some((t) => !skipped.has(t.id))) resolveCurrentLot(room, 'All teams skipped');
       } else {
+        const nextMin = getMinIncrementForBidCount(room.bidCount || 0);
         const anyOther = eligible.some(
-          (t) => t.id !== room.highestBidderId && !skipped.has(t.id) && getMaxBidAllowed(t) > room.highestBid
+          (t) => t.id !== room.highestBidderId && !skipped.has(t.id) && getMaxBidAllowed(t) >= room.highestBid + nextMin
         );
         if (!anyOther) resolveCurrentLot(room, 'All opponents passed');
       }
@@ -648,6 +800,8 @@ export function createAuctionService(getDb) {
           { key: 'lowerOrderBatting', label: 'Lower-Order Batting' },
           { key: 'paceBowling', label: 'Pace Bowling' },
           { key: 'spinBowling', label: 'Spin Bowling' },
+          { key: 'allRounderAdvantage', label: 'All-Rounder Advantage' },
+          { key: 'lrCombination', label: 'L/R Bat & Bowl Combo' },
           { key: 'overallBalance', label: 'Team Balance' },
           { key: 'captaincy', label: 'Captaincy' },
           { key: 'wicketkeeping', label: 'Wicketkeeper' },
@@ -663,24 +817,56 @@ export function createAuctionService(getDb) {
 
   async function getState({ roomId, clientVersion }) {
     const db = getDb();
-    if (!db) {
+    if (!db || Date.now() < quotaCooldownUntil) {
       const room = memoryRooms.get(roomId);
       if (!room) return { error: 'Room not found.' };
       const changed = advanceTimeIfNeeded(room);
+      if (changed) cacheRoom(room);
       if (!changed && clientVersion && Number(clientVersion) === room.version) return { unchanged: true };
       return { room };
     }
 
-    const snap = await db.collection(COLLECTION).doc(roomId).get();
-    if (!snap.exists) return { error: 'Room not found.' };
-    const room = snap.data();
+    let room = null;
+    const cached = roomCache.get(roomId);
+    const hasListener = roomListeners.has(roomId);
+
+    if (cached && (hasListener || Date.now() - cached.cachedAt < 700)) {
+      room = cached.room;
+      ensureListener(db, roomId);
+    } else {
+      try {
+        const snap = await db.collection(COLLECTION).doc(roomId).get();
+        if (!snap.exists) return { error: 'Room not found.' };
+        room = snap.data();
+        cacheRoom(room);
+        ensureListener(db, roomId);
+      } catch (err) {
+        if (isQuotaError(err)) {
+          quotaCooldownUntil = Date.now() + 120000;
+          const mem = memoryRooms.get(roomId);
+          if (mem) {
+            const changed = advanceTimeIfNeeded(mem);
+            if (!changed && clientVersion && Number(clientVersion) === mem.version) return { unchanged: true };
+            return { room: mem };
+          }
+        }
+        throw err;
+      }
+    }
+
     const now = Date.now();
     const needsTimeAdvance =
-      (room.phase === 'AUCTION' && ((room.timerEndsAt && now >= room.timerEndsAt) || (!room.timerEndsAt && room.highestBid === null && room.idleEndsAt && now >= room.idleEndsAt))) ||
+      (room.phase === 'AUCTION' && ((room.timerEndsAt && now >= room.timerEndsAt + BID_GRACE_MS) || (!room.timerEndsAt && room.highestBid === null && room.idleEndsAt && now >= room.idleEndsAt + BID_GRACE_MS))) ||
       (room.phase === 'LOT_RESULT' && room.lotResultEndsAt && now >= room.lotResultEndsAt);
 
     if (needsTimeAdvance) {
-      return runRoomTx(roomId, () => ({ noBump: true }));
+      if (!timeAdvanceInFlight.has(roomId)) {
+        const p = runRoomTx(roomId, () => ({ noBump: true })).finally(() => {
+          timeAdvanceInFlight.delete(roomId);
+        });
+        timeAdvanceInFlight.set(roomId, p);
+      }
+      return timeAdvanceInFlight.get(roomId);
     }
     if (clientVersion && Number(clientVersion) === room.version) {
       return { unchanged: true };

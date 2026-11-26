@@ -31,7 +31,7 @@ try {
   if (serviceAccount) {
     initializeApp({ credential: cert(serviceAccount) });
     db = getFirestore();
-    db.settings({ preferRest: true });
+    db.settings({ preferRest: true, ignoreUndefinedProperties: true });
     console.log("Firebase Admin Initialized successfully.");
   } else {
     console.warn("WARNING: No Firebase credentials found! API will return 500 errors until configured.");
