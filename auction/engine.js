@@ -11,7 +11,7 @@ const BID_TIMER_MS = 10000;
 const BID_GRACE_MS = 2500;
 const LOT_RESULT_PAUSE_MS = 3300;
 const IDLE_EXPIRE_ACTIVE_MS = 4 * 60 * 60 * 1000;
-const IDLE_EXPIRE_FINISHED_MS = 2 * 60 * 60 * 1000;
+const IDLE_EXPIRE_FINISHED_MS = 30 * 60 * 1000;
 const SWEEP_INTERVAL_MS = 30 * 60 * 1000;
 const COLLECTION = 'auction_rooms';
 
@@ -518,6 +518,8 @@ export function serializeRoom(room, viewerTeamId = null) {
       ? { ...room.lastLotOutcome, player: serializePlayerPublic(outcomePlayer, revealRatings) }
       : null,
     analysis: room.analysis,
+    finishedAt: room.finishedAt || null,
+    expiresAt: room.expiresAt || null,
     viewerTeamId,
     isSpectator: viewerTeamId === 'SPECTATOR',
     recommendedLotSize: getLotSizeForTeamCount(room.teams.length),
@@ -537,10 +539,12 @@ export function serializeRoom(room, viewerTeamId = null) {
   };
 }
 
-export function createAuctionService(getDb) {
+export function createAuctionService(getDb, options = {}) {
+  const finishedExpireMs = options.finishedExpireMs ?? IDLE_EXPIRE_FINISHED_MS;
   const roomCache = new Map();
   const roomListeners = new Map();
   const roomStreams = new Map();
+  const roomCleanupTimers = new Map();
   const roomMutationQueues = new Map();
   const timeAdvanceInFlight = new Map();
   let quotaCooldownUntil = 0;
@@ -578,10 +582,51 @@ export function createAuctionService(getDb) {
   function refreshExpiry(room) {
     const now = Date.now();
     room.lastActivityAt = now;
-    room.expiresAt = now + (room.phase === 'ANALYZED' ? IDLE_EXPIRE_FINISHED_MS : IDLE_EXPIRE_ACTIVE_MS);
+    if (room.phase === 'ANALYZED') {
+      if (!room.finishedAt) room.finishedAt = now;
+      room.expiresAt = room.finishedAt + finishedExpireMs;
+    } else {
+      room.expiresAt = now + IDLE_EXPIRE_ACTIVE_MS;
+    }
+  }
+
+  function clearCleanupTimer(roomId) {
+    const t = roomCleanupTimers.get(roomId);
+    if (t) {
+      clearTimeout(t);
+      roomCleanupTimers.delete(roomId);
+    }
+  }
+
+  function notifyRoomExpired(roomId) {
+    const subs = roomStreams.get(roomId);
+    if (!subs || subs.size === 0) return;
+    const msg = {
+      _expired: true,
+      error: 'Game ended — room and all Firebase data were automatically cleared 30 minutes after results.'
+    };
+    for (const cb of Array.from(subs)) {
+      try { cb(msg); } catch {}
+    }
+    roomStreams.delete(roomId);
+  }
+
+  function scheduleFinishedCleanup(room) {
+    if (!room?.roomId || room.phase !== 'ANALYZED' || !room.expiresAt) return;
+    const roomId = room.roomId;
+    clearCleanupTimer(roomId);
+    const delayMs = Math.max(0, room.expiresAt - Date.now());
+    const timer = setTimeout(async () => {
+      roomCleanupTimers.delete(roomId);
+      notifyRoomExpired(roomId);
+      await deleteRoomCompletely(getDb(), roomId);
+    }, delayMs);
+    if (typeof timer.unref === 'function') timer.unref();
+    roomCleanupTimers.set(roomId, timer);
   }
 
   function evictLocalRoom(roomId) {
+    clearCleanupTimer(roomId);
     memoryRooms.delete(roomId);
     roomCache.delete(roomId);
     const listener = roomListeners.get(roomId);
@@ -629,6 +674,9 @@ export function createAuctionService(getDb) {
     const copy = structuredClone(room);
     memoryRooms.set(room.roomId, copy);
     roomCache.set(room.roomId, { room: copy, cachedAt: Date.now() });
+    if (copy.phase === 'ANALYZED') {
+      scheduleFinishedCleanup(copy);
+    }
     const subs = roomStreams.get(room.roomId);
     if (subs && subs.size > 0 && (!prevCached || (copy.version || 0) !== (prevCached.version || 0) || copy.phase !== prevCached.phase)) {
       for (const cb of Array.from(subs)) {
@@ -1173,7 +1221,9 @@ export function createAuctionService(getDb) {
         criteriaLabels,
         standings: evaluated
       };
+      room.finishedAt = Date.now();
       room.phase = 'ANALYZED';
+      room.expiresAt = room.finishedAt + finishedExpireMs;
       return { checkpoint: true };
     });
   }

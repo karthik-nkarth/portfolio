@@ -95,6 +95,16 @@ export function createAuctionRouter(getDb) {
     let lastSentVer = -1;
     const pushRoom = (room) => {
       if (closed || !room) return;
+      if (room._expired) {
+        closed = true;
+        try {
+          res.write(`event: room_error\ndata: ${JSON.stringify({ error: room.error, expired: true })}\n\n`);
+        } catch {}
+        clearInterval(heartbeat);
+        unsub();
+        res.end();
+        return;
+      }
       const ver = room.version || 0;
       if (ver <= lastSentVer) return;
       lastSentVer = ver;

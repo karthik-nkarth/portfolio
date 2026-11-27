@@ -76,7 +76,14 @@ function loadSavedSnapshot() {
     const raw = localStorage.getItem('ipl_room_snapshot');
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return parsed?.roomId ? parsed : null;
+    if (!parsed?.roomId) return null;
+    if (parsed.phase === 'ANALYZED' && parsed.expiresAt && Date.now() >= parsed.expiresAt) {
+      localStorage.removeItem('ipl_room_snapshot');
+      localStorage.removeItem('ipl_room_id');
+      localStorage.removeItem('ipl_team_id');
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -374,9 +381,9 @@ function AuctionGameInner() {
 
   const sseConnectedRef = useRef(false);
 
-  // Instant SSE stream so every individual bid arrives sequentially without polling stalls
+  // Instant SSE stream (stays open during results so 30-minute auto-wipe quits clients cleanly)
   useEffect(() => {
-    if (!roomId || !teamId || state?.phase === 'ANALYZED' || typeof EventSource === 'undefined') {
+    if (!roomId || !teamId || typeof EventSource === 'undefined') {
       sseConnectedRef.current = false;
       return;
     }
@@ -401,10 +408,15 @@ function AuctionGameInner() {
         const err = JSON.parse(ev.data || '{}');
         if (err?.expired) {
           clearSavedGame();
+          versionRef.current = 0;
+          setShowQuitModal(false);
+          setModalTeamId(null);
+          setInspectedPlayer(null);
+          setRolesDraft({ captainId: '', wicketkeeperId: '', impactPlayerId: '' });
           setState(null);
           setRoomId(null);
           setTeamId(null);
-          setLandingErr('Previous auction room expired due to inactivity.');
+          setLandingErr(err.error || 'Game session ended — room and all Firebase data were cleared.');
         }
       } catch {}
     });
@@ -415,7 +427,51 @@ function AuctionGameInner() {
       sseConnectedRef.current = false;
       es.close();
     };
-  }, [roomId, teamId, state?.phase === 'ANALYZED']);
+  }, [roomId, teamId]);
+
+  // Auto-quit finished results view strictly 30 minutes after results are shown
+  useEffect(() => {
+    if (state?.phase !== 'ANALYZED' || !state?.expiresAt) return;
+    const expireAt = state.expiresAt;
+    const quitFinishedSession = () => {
+      clearSavedGame();
+      versionRef.current = 0;
+      setShowQuitModal(false);
+      setModalTeamId(null);
+      setInspectedPlayer(null);
+      setRolesDraft({ captainId: '', wicketkeeperId: '', impactPlayerId: '' });
+      setState(null);
+      setRoomId(null);
+      setTeamId(null);
+      setLandingErr('Game ended — room and all Firebase data were automatically cleared 30 minutes after results.');
+    };
+
+    const syncedNow = Date.now() + serverOffsetRef.current;
+    if (syncedNow >= expireAt) {
+      quitFinishedSession();
+      return;
+    }
+
+    const tick = setInterval(() => {
+      const curNow = Date.now() + serverOffsetRef.current;
+      setNowServerMs(curNow);
+      if (curNow >= expireAt) {
+        clearInterval(tick);
+        quitFinishedSession();
+      }
+    }, 1000);
+
+    const onWake = () => {
+      const curNow = Date.now() + serverOffsetRef.current;
+      if (curNow >= expireAt) quitFinishedSession();
+    };
+    document.addEventListener('visibilitychange', onWake);
+
+    return () => {
+      clearInterval(tick);
+      document.removeEventListener('visibilitychange', onWake);
+    };
+  }, [state?.phase, state?.expiresAt]);
 
   useEffect(() => {
     if (!roomId || !teamId || state?.phase === 'ANALYZED') return;
@@ -1408,6 +1464,11 @@ function AuctionGameInner() {
                     <div className="ag-verdict-score-pill">
                       Total Score: {winner.totalScore} / {maxScore} • Avg Rating: {winner.averageScore} / 100
                     </div>
+                    {state.expiresAt && (
+                      <div className="ag-verdict-score-pill" style={{ background: 'rgba(15, 23, 42, 0.78)', borderColor: 'rgba(148, 163, 184, 0.3)', color: '#cbd5e1' }}>
+                        Auto-clears in {formatClock(Math.max(0, state.expiresAt - nowServerMs))}
+                      </div>
+                    )}
                     <button type="button" className="ag-btn ag-btn-cyan-outline" onClick={shareScorecard}>
                       {verdictCopied ? '✓ Scorecard Copied!' : '📋 Copy Scorecard'}
                     </button>
@@ -1417,6 +1478,11 @@ function AuctionGameInner() {
                 <>
                   <div className="ag-tag">AUCTION CONCLUDED</div>
                   <h2>No Qualified Winner</h2>
+                  {state.expiresAt && (
+                    <div className="ag-verdict-score-pill" style={{ background: 'rgba(15, 23, 42, 0.78)', borderColor: 'rgba(148, 163, 184, 0.3)', color: '#cbd5e1', marginTop: 8 }}>
+                      Auto-clears in {formatClock(Math.max(0, state.expiresAt - nowServerMs))}
+                    </div>
+                  )}
                 </>
               )}
             </div>
