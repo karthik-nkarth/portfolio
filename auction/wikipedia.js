@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { fetchHallOfFamePlayer } from './halloffame.js';
 
-const CACHE_DIR = path.join(os.tmpdir(), 'ipl-official-headshots-v2');
+const CACHE_DIR = path.join(os.tmpdir(), 'ipl-official-headshots-v3');
 const memoryCache = new Map();
 const inFlight = new Map();
 
@@ -96,7 +96,8 @@ async function downloadImage(imgUrl) {
   const ct = res.headers.get('content-type') || '';
   if (!ct.startsWith('image/')) return null;
   const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length < 1000) return null;
+  // Reject Cricbuzz/CDN blank default silhouettes (e.g. 2419-byte generic avatar)
+  if (buf.length < 3200) return null;
   return { imageBuffer: buf, contentType: ct };
 }
 
@@ -152,8 +153,9 @@ async function getCricbuzzIndex() {
           if (!res.ok) return;
           const html = await res.text();
           for (const m of html.matchAll(/https:\/\/static\.cricbuzz\.com\/a\/img\/v1\/i1\/(c\d+)\/([a-z0-9-]+)\.jpg/gi)) {
+            const cId = m[1].toLowerCase();
             const slug = m[2].toLowerCase();
-            if (slug === 'i' || slug.includes('logo')) continue;
+            if (slug === 'i' || slug.includes('logo') || cId === 'c174146') continue;
             const imgUrl = `https://static.cricbuzz.com/a/img/v1/300x300/i1/${m[1]}/${m[2]}.jpg`;
             if (!map.has(slug)) map.set(slug, imgUrl);
             const normKey = normAlpha(slug);

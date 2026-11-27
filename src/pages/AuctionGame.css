@@ -689,6 +689,36 @@
 .ag-xi-badge.imp { background: rgba(56, 189, 248, 0.22); color: #7dd3fc; border: 1px solid rgba(56, 189, 248, 0.5); }
 .ag-xi-badge.os { color: #d8b4fe; }
 
+.ag-spectate-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #cbd5e1;
+  user-select: none;
+}
+.ag-spectate-check input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  accent-color: var(--cyan);
+  cursor: pointer;
+}
+
+.ag-spectator-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #bae6fd;
+  font-size: 0.84rem;
+}
+
 @media (max-width: 1024px) {
   .ag-auction-grid { grid-template-columns: 1fr; }
   .ag-teams-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
@@ -927,3 +957,42 @@
     font-size: 0.68rem;
   }
 }
+
+.ag-postmortem-box {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.ag-postmortem-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ag-pm-badge {
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+.ag-postmortem-row.is-good .ag-pm-badge {
+  background: rgba(16, 185, 129, 0.16);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+.ag-postmortem-row.is-good { color: #cbd5e1; }
+.ag-postmortem-row.is-loss .ag-pm-badge {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+.ag-postmortem-row.is-loss { color: #e2e8f0; }

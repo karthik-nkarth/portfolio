@@ -6,7 +6,7 @@ const STARTING_PURSE = 50000;
 const MAX_SQUAD_SIZE = 12;
 const MAX_OVERSEAS = 4;
 const MIN_RESERVE_PER_SLOT = 300;
-const IDLE_TIMER_MS = 120000;
+const IDLE_TIMER_MS = 60000;
 const BID_TIMER_MS = 10000;
 const BID_GRACE_MS = 2500;
 const LOT_RESULT_PAUSE_MS = 3300;
@@ -60,9 +60,9 @@ function generateToken() {
 }
 
 function getMinIncrementForBidCount(bidCount) {
-  if (bidCount >= 15) return 1000;
-  if (bidCount >= 10) return 500;
-  if (bidCount >= 5) return 200;
+  if (bidCount >= 12) return 1000;
+  if (bidCount >= 8) return 500;
+  if (bidCount >= 4) return 200;
   return 100;
 }
 
@@ -95,10 +95,11 @@ function enterRoleSelection(room) {
   room.highestBidderId = null;
 
   for (const team of room.teams) {
-    if (team.quit || (team.squad?.length || 0) === 0) {
+    if (team.quit || (team.squad?.length || 0) < MAX_SQUAD_SIZE) {
       team.disqualified = true;
       team.roles = { captainId: '', wicketkeeperId: '', impactPlayerId: '', confirmed: true };
     } else {
+      team.disqualified = false;
       team.roles = { captainId: '', wicketkeeperId: '', impactPlayerId: '', confirmed: false };
     }
   }
@@ -197,7 +198,7 @@ function advanceTimeIfNeeded(room) {
     if (room.timerEndsAt && now >= room.timerEndsAt + BID_GRACE_MS) {
       if (resolveCurrentLot(room, '10-second countdown completed')) changed = true;
     } else if (!room.timerEndsAt && room.highestBid === null && room.idleEndsAt && now >= room.idleEndsAt + BID_GRACE_MS) {
-      if (resolveCurrentLot(room, '2-minute display limit expired (no bids)')) changed = true;
+      if (resolveCurrentLot(room, '1-minute display limit expired (no bids)')) changed = true;
     }
   }
   if (room.phase === 'LOT_RESULT' && room.lotResultEndsAt && now >= room.lotResultEndsAt) {
@@ -208,16 +209,9 @@ function advanceTimeIfNeeded(room) {
   return changed;
 }
 
-function rateSkill(rating = 0) {
-  const r = Number(rating) || 0;
-  if (r <= 0) return 0;
-  if (r < 50) return Math.round(r * 0.3);
-  return Math.min(100, Math.round(15 + Math.pow((r - 50) / 49, 1.55) * 85));
-}
-
 function scoreSingleTeam(team) {
   const squad = (team.squad || []).map(hydrateSquadEntry).filter(Boolean);
-  if (team.quit || squad.length === 0) {
+  if (team.quit || squad.length < MAX_SQUAD_SIZE) {
     return {
       teamId: team.id,
       teamName: team.name,
@@ -236,21 +230,38 @@ function scoreSingleTeam(team) {
       },
       totalScore: 0,
       averageScore: 0,
-      verdict: team.quit ? 'QUIT — Left the auction early.' : 'DISQUALIFIED — 0 players drafted during the auction.'
+      verdict: team.quit
+        ? 'QUIT — Left the auction early.'
+        : `DISQUALIFIED — Incomplete squad (${squad.length}/${MAX_SQUAD_SIZE} players drafted; full 12 required).`
     };
   }
 
+  // Direct weighted summation of unreduced player skill ratings (missing required slots count as 0)
   const weightedTopN = (arr, weights) => {
     const sorted = [...arr].sort((a, b) => b - a);
     let total = 0;
     for (let i = 0; i < weights.length; i++) {
-      total += (sorted[i] ?? 12) * weights[i];
+      total += (sorted[i] ?? 0) * weights[i];
     }
     return Math.round(total);
   };
 
-  const lhbBatters = squad.filter((p) => p.battingStyle === 'LHB' && (p.ratings.batting || 0) >= 68).length;
-  const rhbBatters = squad.filter((p) => p.battingStyle === 'RHB' && (p.ratings.batting || 0) >= 68).length;
+  const captain = squad.find((p) => p.id === team.roles.captainId) || squad[0];
+  const keeper = squad.find((p) => p.id === team.roles.wicketkeeperId) || squad[0];
+  const impactPl = squad.find((p) => p.id === team.roles.impactPlayerId) || squad[0];
+
+  // Separate Playing XI and route Impact Player strictly into their matching skill units without reduction
+  const playingXI = squad.filter((p) => p.id !== impactPl.id);
+  const impBat = impactPl.role === 'Batsman' || impactPl.role === 'Wicketkeeper' || impactPl.role === 'All-Rounder' || (impactPl.ratings.batting || 0) >= 65;
+  const impPace = (impactPl.role === 'Bowler' || impactPl.role === 'All-Rounder') && (impactPl.ratings.paceBowling || 0) >= 55;
+  const impSpin = (impactPl.role === 'Bowler' || impactPl.role === 'All-Rounder') && (impactPl.ratings.spinBowling || 0) >= 55;
+
+  const battingContributors = impBat ? [...playingXI, impactPl] : playingXI;
+  const paceContributors = impPace ? [...playingXI, impactPl] : playingXI;
+  const spinContributors = impSpin ? [...playingXI, impactPl] : playingXI;
+
+  const lhbBatters = battingContributors.filter((p) => p.battingStyle === 'LHB' && (p.ratings.batting || 0) >= 68).length;
+  const rhbBatters = battingContributors.filter((p) => p.battingStyle === 'RHB' && (p.ratings.batting || 0) >= 68).length;
   const batComboMin = Math.min(lhbBatters, rhbBatters);
   const batComboPts = batComboMin >= 3 ? 50 : batComboMin === 2 ? 42 : batComboMin === 1 ? 28 : 10;
 
@@ -263,72 +274,54 @@ function scoreSingleTeam(team) {
   const lrCombination = Math.min(100, batComboPts + bowlComboPts);
 
   const batComboBoost = batComboMin >= 2 ? 3 : batComboMin === 1 ? 1 : 0;
-  const paceComboBoost = activeBowlers.some((p) => p.ratings.paceBowling >= 70 && isLeftArmBowler(p)) &&
-    activeBowlers.some((p) => p.ratings.paceBowling >= 70 && !isLeftArmBowler(p)) ? 4 : 0;
-  const spinComboBoost = activeBowlers.some((p) => p.ratings.spinBowling >= 70 && isLeftArmBowler(p)) &&
-    activeBowlers.some((p) => p.ratings.spinBowling >= 70 && !isLeftArmBowler(p)) ? 4 : 0;
+  const paceComboBoost = paceContributors.some((p) => p.ratings.paceBowling >= 70 && isLeftArmBowler(p)) &&
+    paceContributors.some((p) => p.ratings.paceBowling >= 70 && !isLeftArmBowler(p)) ? 4 : 0;
+  const spinComboBoost = spinContributors.some((p) => p.ratings.spinBowling >= 70 && isLeftArmBowler(p)) &&
+    spinContributors.some((p) => p.ratings.spinBowling >= 70 && !isLeftArmBowler(p)) ? 4 : 0;
 
-function rateFielding(rating = 0) {
-  const r = Number(rating) || 0;
-  if (r <= 0) return 10;
-  return Math.min(100, Math.max(10, Math.round(10 + Math.pow(Math.max(0, r - 66) / 33, 1.65) * 90)));
-}
-
-  // Every player is scored strictly on their individual batting, bowling, keeping & fielding skill ratings (no separate All-Rounder bonus)
   const topOrderBatting = Math.min(
     100,
-    weightedTopN(squad.map((p) => rateSkill(p.ratings.topOrder)), [0.42, 0.33, 0.25]) + batComboBoost
+    weightedTopN(battingContributors.map((p) => p.ratings.topOrder || 0), [0.4, 0.32, 0.28]) + batComboBoost
   );
   const middleOrderBatting = Math.min(
     100,
-    weightedTopN(squad.map((p) => rateSkill(p.ratings.middleOrder)), [0.42, 0.33, 0.25]) + batComboBoost
+    weightedTopN(battingContributors.map((p) => p.ratings.middleOrder || 0), [0.4, 0.32, 0.28]) + batComboBoost
   );
   const lowerOrderBatting = Math.min(
     100,
-    weightedTopN(squad.map((p) => rateSkill(p.ratings.lowerOrder)), [0.42, 0.33, 0.25])
+    weightedTopN(battingContributors.map((p) => p.ratings.lowerOrder || 0), [0.4, 0.32, 0.28])
   );
   const paceBowling = Math.min(
     100,
-    weightedTopN(squad.map((p) => rateSkill(p.ratings.paceBowling)), [0.45, 0.32, 0.23]) + paceComboBoost
+    weightedTopN(paceContributors.map((p) => p.ratings.paceBowling || 0), [0.45, 0.33, 0.22]) + paceComboBoost
   );
   const spinBowling = Math.min(
     100,
-    weightedTopN(squad.map((p) => rateSkill(p.ratings.spinBowling)), [0.58, 0.42]) + spinComboBoost
+    weightedTopN(spinContributors.map((p) => p.ratings.spinBowling || 0), [0.58, 0.42]) + spinComboBoost
   );
 
-  // Skill-weighted team balance (no flat headcount giveaways)
-  const completeness = (Math.min(squad.length, MAX_SQUAD_SIZE) / MAX_SQUAD_SIZE) * 28;
-  const batUnitScore = weightedTopN(squad.map((p) => rateSkill(p.ratings.batting)), [0.24, 0.22, 0.2, 0.18, 0.16]) * 0.26;
-  const paceUnitScore = weightedTopN(squad.map((p) => rateSkill(p.ratings.paceBowling)), [0.45, 0.32, 0.23]) * 0.2;
-  const spinUnitScore = weightedTopN(squad.map((p) => rateSkill(p.ratings.spinBowling)), [0.58, 0.42]) * 0.14;
-  const wkSkill = Math.max(0, ...squad.map((p) => rateSkill(p.ratings.wicketkeeping))) * 0.06;
-  const lrBonus = lrCombination * 0.06;
-  const overallBalance = Math.min(100, Math.round(completeness + batUnitScore + paceUnitScore + spinUnitScore + wkSkill + lrBonus));
+  // Direct summation-based balance across unreduced unit skills + 12-player completeness
+  const completeness = (Math.min(squad.length, MAX_SQUAD_SIZE) / MAX_SQUAD_SIZE) * 24;
+  const batUnitScore = weightedTopN(battingContributors.map((p) => p.ratings.batting || 0), [0.24, 0.22, 0.2, 0.18, 0.16]) * 0.28;
+  const paceUnitScore = weightedTopN(paceContributors.map((p) => p.ratings.paceBowling || 0), [0.45, 0.33, 0.22]) * 0.2;
+  const spinUnitScore = weightedTopN(spinContributors.map((p) => p.ratings.spinBowling || 0), [0.58, 0.42]) * 0.14;
+  const wkUnitSkill = (keeper?.ratings?.wicketkeeping || 0) * 0.07;
+  const lrBonus = lrCombination * 0.07;
+  const overallBalance = Math.min(100, Math.round(completeness + batUnitScore + paceUnitScore + spinUnitScore + wkUnitSkill + lrBonus));
 
-  const captain = squad.find((p) => p.id === team.roles.captainId) || squad[0];
-  const captaincy = Math.min(100, rateSkill(Math.round(captain.ratings.captaincy * 0.85 + captain.ratings.overall * 0.15)));
+  const captaincy = Math.min(100, Math.round(captain.ratings.captaincy || 0));
+  const wicketkeeping = Math.min(100, Math.round(keeper.ratings.wicketkeeping || 0));
+  const impactPlayer = Math.min(100, Math.round(impactPl.ratings.impact || 0));
 
-  const keeper = squad.find((p) => p.id === team.roles.wicketkeeperId) || squad[0];
-  const wicketkeeping = Math.min(100, rateSkill(Math.round(keeper.ratings.wicketkeeping * 0.78 + keeper.ratings.batting * 0.22)));
-
-  const impactPl = squad.find((p) => p.id === team.roles.impactPlayerId) || squad[0];
-  const impactPlayer = Math.min(100, rateSkill(Math.round(impactPl.ratings.impact * 0.78 + impactPl.ratings.overall * 0.22)));
-
-  // Score fielding across every player in squad including WK's glove/agility value
-  const fieldingScores = squad
-    .map((p) => {
-      const effectiveField =
-        p.id === keeper?.id
-          ? Math.round(p.ratings.fielding * 0.55 + Math.max(p.ratings.wicketkeeping || 0, p.ratings.fielding) * 0.45)
-          : p.ratings.fielding;
-      return rateFielding(effectiveField);
-    })
-    .sort((a, b) => b - a);
-
-  const squadFieldAvg = fieldingScores.reduce((s, v) => s + v, 0) / fieldingScores.length;
-  const top4FieldAvg = fieldingScores.slice(0, Math.min(4, fieldingScores.length)).reduce((s, v) => s + v, 0) / Math.min(4, fieldingScores.length);
-  const fieldCompleteness = Math.min(1, squad.length / 11);
-  const fieldingQuality = Math.min(100, Math.round((top4FieldAvg * 0.35 + squadFieldAvg * 0.65) * fieldCompleteness));
+  // Proper summation across every player in squad (including WK glove agility) without score reduction
+  const squadFieldSum = squad.reduce((sum, p) => {
+    const playerField =
+      p.id === keeper?.id
+        ? Math.max(p.ratings.fielding || 0, Math.round(((p.ratings.fielding || 0) + (p.ratings.wicketkeeping || 0)) / 2))
+        : (p.ratings.fielding || 0);
+    return sum + playerField;
+  }, 0);
+  const fieldingQuality = Math.min(100, Math.round(squadFieldSum / Math.max(11, squad.length)));
 
   const scores = {
     topOrderBatting, middleOrderBatting, lowerOrderBatting, paceBowling, spinBowling,
@@ -338,6 +331,17 @@ function rateFielding(rating = 0) {
   const totalScore = Object.values(scores).reduce((sum, val) => sum + val, 0);
   const averageScore = Number((totalScore / 11).toFixed(1));
   const avgOverall = Math.round(squad.reduce((sum, p) => sum + p.ratings.overall, 0) / squad.length);
+
+  const findBestInSquad = (metricKey) => {
+    let best = squad[0] || null;
+    for (const pl of squad) {
+      if ((pl.ratings?.[metricKey] || 0) > (best?.ratings?.[metricKey] || 0)) best = pl;
+    }
+    return best;
+  };
+  const bestCaptainOpt = findBestInSquad('captaincy');
+  const bestKeeperOpt = findBestInSquad('wicketkeeping');
+  const bestImpactOpt = findBestInSquad('impact');
 
   const entries = [
     ['Top Order', topOrderBatting], ['Middle Order', middleOrderBatting], ['Lower Order', lowerOrderBatting],
@@ -364,8 +368,95 @@ function rateFielding(rating = 0) {
     scores,
     totalScore,
     averageScore,
-    verdict: `Strengths: ${entries[0][0]} (${entries[0][1]}) & ${entries[1][0]} (${entries[1][1]}). Watch out: ${entries[entries.length - 1][0]} (${entries[entries.length - 1][1]}).`
+    verdict: `Strengths: ${entries[0][0]} (${entries[0][1]}) & ${entries[1][0]} (${entries[1][1]}). Watch out: ${entries[entries.length - 1][0]} (${entries[entries.length - 1][1]}).`,
+    _diag: {
+      lhbBatters, rhbBatters, leftArmBowlers, rightArmBowlers,
+      bestCaptainOpt: bestCaptainOpt ? { id: bestCaptainOpt.id, name: bestCaptainOpt.name, val: Math.round(bestCaptainOpt.ratings?.captaincy || 0) } : null,
+      bestKeeperOpt: bestKeeperOpt ? { id: bestKeeperOpt.id, name: bestKeeperOpt.name, val: Math.round(bestKeeperOpt.ratings?.wicketkeeping || 0) } : null,
+      bestImpactOpt: bestImpactOpt ? { id: bestImpactOpt.id, name: bestImpactOpt.name, val: Math.round(bestImpactOpt.ratings?.impact || 0) } : null
+    }
   };
+}
+
+function buildPostMortem(entry, winner, criteriaLabels) {
+  if (!entry || entry.isWinner) return null;
+
+  if (entry.disqualified || (entry.squadCount || 0) < 12) {
+    const missing = Math.max(0, 12 - (entry.squadCount || 0));
+    const wentRight = entry.squadCount > 0
+      ? `Drafted ${entry.squadCount} player${entry.squadCount > 1 ? 's' : ''} with ${formatINRShort(entry.remainingPurse)} purse remaining.`
+      : 'No players were finalized before exiting.';
+    const whyLost = missing > 0
+      ? `Disqualified for finishing with ${entry.squadCount}/12 players (all 12 slots are mandatory; ${missing} short). Picking up ${missing} low-cost player${missing > 1 ? 's' : ''} in Round 2 would have kept the squad eligible and unlocked all 11 category scores.`
+      : 'Team left the auction early before completing squad evaluation.';
+    return { pointsBehind: winner ? winner.totalScore : 0, wentRight, whyLost };
+  }
+
+  if (!winner) return null;
+
+  const pointsBehind = Math.max(0, (winner.totalScore || 0) - (entry.totalScore || 0));
+  const comparisons = criteriaLabels.map(({ key, label }) => {
+    const mine = entry.scores?.[key] ?? 0;
+    const winScore = winner.scores?.[key] ?? 0;
+    return { key, label, mine, winScore, diff: winScore - mine };
+  });
+
+  const beatOrMatched = comparisons.filter((c) => c.mine >= c.winScore).sort((a, b) => b.mine - a.mine);
+  const byMineDesc = [...comparisons].sort((a, b) => b.mine - a.mine);
+  const top1 = byMineDesc[0];
+  const top2 = byMineDesc[1];
+
+  const wentRight = beatOrMatched.length >= 2
+    ? `Beat or matched #1 ${winner.teamName} in ${beatOrMatched[0].label} (${beatOrMatched[0].mine} vs ${beatOrMatched[0].winScore}) and ${beatOrMatched[1].label} (${beatOrMatched[1].mine} vs ${beatOrMatched[1].winScore}).`
+    : beatOrMatched.length === 1
+    ? `Outscored/matched #1 in ${beatOrMatched[0].label} (${beatOrMatched[0].mine} vs ${beatOrMatched[0].winScore}), backed by strong ${top1.key === beatOrMatched[0].key ? top2.label : top1.label} (${top1.key === beatOrMatched[0].key ? top2.mine : top1.mine}).`
+    : `Best units were ${top1.label} (${top1.mine}) and ${top2.label} (${top2.mine}), keeping the squad competitive.`;
+
+  const deficits = comparisons.filter((c) => c.diff > 0).sort((a, b) => b.diff - a.diff);
+  const primary = deficits[0];
+  const secondary = deficits[1];
+  const diag = entry._diag || {};
+  const gapSummary = [primary, secondary]
+    .filter(Boolean)
+    .map((d) => `${d.label} (${d.mine} vs ${d.winScore}, -${d.diff} pts)`)
+    .join(' and ');
+
+  let reasonDetail = '';
+  if (primary?.key === 'captaincy') {
+    const capName = entry.roles?.captain?.name || 'selected Captain';
+    if (diag.bestCaptainOpt && diag.bestCaptainOpt.val > primary.mine) {
+      reasonDetail = `Captaincy with ${capName} (${primary.mine}) left +${diag.bestCaptainOpt.val - primary.mine} pts on the table—naming ${diag.bestCaptainOpt.name} (${diag.bestCaptainOpt.val}) from your own squad would have boosted this immediately.`;
+    } else {
+      reasonDetail = `Naming ${capName} (${primary.mine}) lacked top leadership pedigree; winning a marquee captain would have closed that gap.`;
+    }
+  } else if (primary?.key === 'wicketkeeping') {
+    const wkName = entry.roles?.wicketkeeper?.name || 'selected WK';
+    if (diag.bestKeeperOpt && diag.bestKeeperOpt.val > primary.mine) {
+      reasonDetail = `Glovework with ${wkName} (${primary.mine}) missed points—switching WK to ${diag.bestKeeperOpt.name} (${diag.bestKeeperOpt.val}) in your squad was a free +${diag.bestKeeperOpt.val - primary.mine} pt upgrade.`;
+    } else {
+      reasonDetail = `Starting ${wkName} (${primary.mine}) behind the stumps trailed #1; securing a specialist frontline keeper was needed.`;
+    }
+  } else if (primary?.key === 'impactPlayer') {
+    const impName = entry.roles?.impactPlayer?.name || 'selected Impact Sub';
+    if (diag.bestImpactOpt && diag.bestImpactOpt.val > primary.mine && diag.bestImpactOpt.id !== entry.roles?.captain?.id && diag.bestImpactOpt.id !== entry.roles?.wicketkeeper?.id) {
+      reasonDetail = `Impact Sub ${impName} (${primary.mine}) underperformed—assigning ${diag.bestImpactOpt.name} (${diag.bestImpactOpt.val}) as 12th man would have added +${diag.bestImpactOpt.val - primary.mine} pts.`;
+    } else {
+      reasonDetail = `Impact Sub choice ${impName} (${primary.mine}) had lower X-factor impact than ${winner.teamName}'s sub; reserving a versatile high-impact finisher/bowler for 12th man helps.`;
+    }
+  } else if (primary?.key === 'paceBowling' || primary?.key === 'spinBowling') {
+    reasonDetail = `Attack depth in ${primary.label} fell behind ${winner.teamName}—locking in a prime wicket-taking ${primary.key === 'paceBowling' ? 'pacer (+ L-arm variety)' : 'spinner'} in earlier rounds would have flipped this matchup.`;
+  } else if (primary?.key === 'lrCombination') {
+    reasonDetail = `Left/Right hand & bowling arm mix (LHB ${diag.lhbBatters ?? 0}/RHB ${diag.rhbBatters ?? 0}, L-Arm ${diag.leftArmBowlers ?? 0}/R-Arm ${diag.rightArmBowlers ?? 0}) lagged behind #1—adding an extra LHB batter or left-arm bowler would have boosted multiple categories.`;
+  } else if (primary) {
+    reasonDetail = `Addressing the ${primary.label} shortfall (${primary.mine} vs ${primary.winScore}) through sharper priority bidding was the biggest swing factor.`;
+  }
+
+  const whyLost = `Trailed #1 by ${pointsBehind} pts overall, losing most ground in ${gapSummary || 'overall depth'}. ${reasonDetail}`.trim();
+  return { pointsBehind, wentRight, whyLost };
+}
+
+function formatINRShort(n) {
+  return `₹${Number(n || 0).toLocaleString('en-IN')}`;
 }
 
 function serializePlayerPublic(player, includeRatings = false) {
@@ -428,6 +519,7 @@ export function serializeRoom(room, viewerTeamId = null) {
       : null,
     analysis: room.analysis,
     viewerTeamId,
+    isSpectator: viewerTeamId === 'SPECTATOR',
     recommendedLotSize: getLotSizeForTeamCount(room.teams.length),
     rules: {
       startingPurse: STARTING_PURSE, maxSquadSize: MAX_SQUAD_SIZE, maxOverseas: MAX_OVERSEAS,
@@ -448,9 +540,37 @@ export function serializeRoom(room, viewerTeamId = null) {
 export function createAuctionService(getDb) {
   const roomCache = new Map();
   const roomListeners = new Map();
+  const roomStreams = new Map();
+  const roomMutationQueues = new Map();
   const timeAdvanceInFlight = new Map();
   let quotaCooldownUntil = 0;
   let lastSweepAt = 0;
+
+  function enqueueRoomWrite(roomId, task) {
+    const prev = roomMutationQueues.get(roomId) || Promise.resolve();
+    const run = prev.catch(() => {}).then(task);
+    const tail = run.finally(() => {
+      if (roomMutationQueues.get(roomId) === tail) roomMutationQueues.delete(roomId);
+    });
+    roomMutationQueues.set(roomId, tail);
+    return run;
+  }
+
+  function subscribeRoom(roomId, listener) {
+    if (!roomId || typeof listener !== 'function') return () => {};
+    let subs = roomStreams.get(roomId);
+    if (!subs) {
+      subs = new Set();
+      roomStreams.set(roomId, subs);
+    }
+    subs.add(listener);
+    return () => {
+      const set = roomStreams.get(roomId);
+      if (!set) return;
+      set.delete(listener);
+      if (set.size === 0) roomStreams.delete(roomId);
+    };
+  }
 
   const isQuotaError = (err) =>
     err?.code === 8 || /quota|resource_exhausted/i.test(err?.message || '');
@@ -505,9 +625,16 @@ export function createAuctionService(getDb) {
 
   function cacheRoom(room) {
     if (!room?.roomId) return;
+    const prevCached = roomCache.get(room.roomId)?.room;
     const copy = structuredClone(room);
     memoryRooms.set(room.roomId, copy);
     roomCache.set(room.roomId, { room: copy, cachedAt: Date.now() });
+    const subs = roomStreams.get(room.roomId);
+    if (subs && subs.size > 0 && (!prevCached || (copy.version || 0) !== (prevCached.version || 0) || copy.phase !== prevCached.phase)) {
+      for (const cb of Array.from(subs)) {
+        try { cb(copy); } catch {}
+      }
+    }
   }
 
   function ensureListener(db, roomId) {
@@ -521,8 +648,14 @@ export function createAuctionService(getDb) {
       const ref = db.collection(COLLECTION).doc(roomId);
       const unsub = ref.onSnapshot(
         (snap) => {
-          if (snap.exists) cacheRoom(snap.data());
-          else evictLocalRoom(roomId);
+          if (snap.exists) {
+            const incoming = snap.data();
+            const curMem = memoryRooms.get(roomId);
+            if (curMem && (incoming.version || 0) < (curMem.version || 0)) return;
+            cacheRoom(incoming);
+          } else {
+            evictLocalRoom(roomId);
+          }
         },
         (err) => {
           if (isQuotaError(err)) quotaCooldownUntil = Date.now() + 120000;
@@ -540,92 +673,103 @@ export function createAuctionService(getDb) {
     } catch {}
   }
 
+  async function loadRoomIntoMemory(db, roomId) {
+    const inMem = memoryRooms.get(roomId);
+    if (inMem) {
+      if (db) ensureListener(db, roomId);
+      return inMem;
+    }
+    if (!db) return null;
+    if (Date.now() < quotaCooldownUntil) {
+      const err = new Error('Database daily quota reached.');
+      err.isQuota = true;
+      throw err;
+    }
+    const snap = await db.collection(COLLECTION).doc(roomId).get();
+    if (!snap.exists) return null;
+    cacheRoom(snap.data());
+    ensureListener(db, roomId);
+    return memoryRooms.get(roomId);
+  }
+
+  // Execute mutations sequentially in RAM and checkpoint to Firestore only at meaningful milestones
+  // (joins, start, lot settlements SOLD/UNSOLD, round shifts, roles, analysis) — cutting writes ~85-90%.
   async function runRoomTx(roomId, mutator) {
-    const db = getDb();
-    const now = Date.now();
-    if (!db) {
-      const room = memoryRooms.get(roomId);
+    return enqueueRoomWrite(roomId, async () => {
+      const db = getDb();
+      const now = Date.now();
+      let room = null;
+      try {
+        room = await loadRoomIntoMemory(db, roomId);
+      } catch (err) {
+        if (err?.isQuota || isQuotaError(err)) {
+          quotaCooldownUntil = Date.now() + 30000;
+          return {
+            error: 'Database daily quota reached (resets at midnight PT / ~1:30 PM IST). Upgrade to Blaze or try after reset.',
+            status: 503,
+            quotaExceeded: true
+          };
+        }
+        throw err;
+      }
+
       if (!room) return { error: 'Room not found.', status: 404 };
       if (room.expiresAt && now >= room.expiresAt) {
-        evictLocalRoom(roomId);
+        await deleteRoomCompletely(db, roomId);
         return { error: 'Room expired due to inactivity.', status: 404, expired: true };
       }
-      advanceTimeIfNeeded(room);
+
+      const prevPhase = room.phase;
+      const prevRound = room.round;
+      const timeChanged = advanceTimeIfNeeded(room);
       const res = mutator(room);
-      if (res?.error) return res;
+
       if (res?.deleteRoom) {
-        evictLocalRoom(roomId);
+        await deleteRoomCompletely(db, roomId);
         return { deleted: true };
       }
+
+      const settledOrMilestone =
+        (room.phase !== prevPhase && (room.phase === 'LOT_RESULT' || room.phase === 'ROLE_SELECTION' || room.phase === 'ANALYZED')) ||
+        room.round !== prevRound;
+
+      const shouldCheckpoint = Boolean(db && Date.now() >= quotaCooldownUntil && (res?.checkpoint || settledOrMilestone));
+
+      if (res?.error) {
+        if (timeChanged) {
+          refreshExpiry(room);
+          cacheRoom(room);
+          if (db && settledOrMilestone && Date.now() >= quotaCooldownUntil) {
+            db.collection(COLLECTION).doc(roomId).set(structuredClone(room)).catch((err) => {
+              if (isQuotaError(err)) quotaCooldownUntil = Date.now() + 30000;
+            });
+          }
+        }
+        return res;
+      }
+
       if (!res?.noBump) {
         room.version = (room.version || 0) + 1;
         refreshExpiry(room);
+      } else if (timeChanged) {
+        refreshExpiry(room);
       }
-      cacheRoom(room);
-      return { room };
-    }
 
-    if (now < quotaCooldownUntil) {
-      return {
-        error: 'Database daily quota reached (resets at midnight PT / ~1:30 PM IST). Upgrade to Blaze or try after reset.',
-        status: 503,
-        quotaExceeded: true
-      };
-    }
+      if (!res?.noBump || timeChanged) {
+        cacheRoom(room);
+      }
 
-    const ref = db.collection(COLLECTION).doc(roomId);
-    try {
-      const out = await db.runTransaction(async (tx) => {
-        const snap = await tx.get(ref);
-        if (!snap.exists) return { error: 'Room not found.', status: 404 };
-        const room = snap.data();
-        if (room.expiresAt && Date.now() >= room.expiresAt) {
-          tx.delete(ref);
-          return { error: 'Room expired due to inactivity.', status: 404, expired: true, _evict: true };
+      if (shouldCheckpoint) {
+        try {
+          await db.collection(COLLECTION).doc(roomId).set(structuredClone(room));
+        } catch (err) {
+          if (isQuotaError(err)) quotaCooldownUntil = Date.now() + 30000;
+          else throw err;
         }
-        const timeChanged = advanceTimeIfNeeded(room);
-        const res = mutator(room);
-        if (res?.error) {
-          if (timeChanged) {
-            refreshExpiry(room);
-            tx.set(ref, room);
-          }
-          return res;
-        }
-        if (res?.deleteRoom) {
-          tx.delete(ref);
-          return { deleted: true, _evict: true };
-        }
-        if (!res?.noBump) {
-          room.version = (room.version || 0) + 1;
-          refreshExpiry(room);
-        } else if (timeChanged) {
-          refreshExpiry(room);
-        }
-        if (!res?.noBump || timeChanged) tx.set(ref, room);
-        return { room };
-      });
-      if (out?._evict) {
-        evictLocalRoom(roomId);
-        delete out._evict;
-        return out;
       }
-      if (out?.room) {
-        cacheRoom(out.room);
-        ensureListener(db, roomId);
-      }
-      return out;
-    } catch (err) {
-      if (isQuotaError(err)) {
-        quotaCooldownUntil = Date.now() + 30000;
-        return {
-          error: 'Database daily quota reached (resets at midnight PT / ~1:30 PM IST). Upgrade to Blaze or try after reset.',
-          status: 503,
-          quotaExceeded: true
-        };
-      }
-      throw err;
-    }
+
+      return { room: memoryRooms.get(roomId) || room };
+    });
   }
 
   async function createRoom({ hostName }) {
@@ -716,7 +860,7 @@ export function createAuctionService(getDb) {
     return { room, teamId };
   }
 
-  async function joinRoom({ roomId, password, teamName, reconnectToken }) {
+  async function joinRoom({ roomId, password, teamName, reconnectToken, spectate }) {
     const cleanRoomId = String(roomId || '').trim();
     const cleanPass = String(password || '').trim();
     const cleanName = String(teamName || '').trim().slice(0, 22);
@@ -724,6 +868,10 @@ export function createAuctionService(getDb) {
     let assignedTeamId = null;
     const out = await runRoomTx(cleanRoomId, (room) => {
       if (room.password !== cleanPass) return { error: 'Incorrect 4-digit Room Password.' };
+      if (spectate) {
+        assignedTeamId = 'SPECTATOR';
+        return { noBump: true };
+      }
       let existing = reconnectToken ? room.teams.find((t) => t.id === reconnectToken && !t.quit) : null;
       if (!existing && cleanName) {
         existing = room.teams.find((t) => t.name.toLowerCase() === cleanName.toLowerCase() && !t.quit);
@@ -747,7 +895,7 @@ export function createAuctionService(getDb) {
         purse: STARTING_PURSE, squad: [], overseasCount: 0, currentLotBid: null, disqualified: false,
         roles: { captainId: '', wicketkeeperId: '', impactPlayerId: '', confirmed: false }
       });
-      return {};
+      return { checkpoint: true };
     });
 
     if (out.error) return out;
@@ -755,6 +903,7 @@ export function createAuctionService(getDb) {
   }
 
   async function leaveRoom({ roomId, teamId }) {
+    if (!teamId || teamId === 'SPECTATOR') return { ok: true };
     return runRoomTx(roomId, (room) => {
       const idx = room.teams.findIndex((t) => t.id === teamId);
       if (idx === -1) return { noBump: true };
@@ -767,7 +916,7 @@ export function createAuctionService(getDb) {
           room.teams[0].isHost = true;
           room.hostTeamId = room.teams[0].id;
         }
-        return {};
+        return { checkpoint: true };
       }
 
       const team = room.teams[idx];
@@ -803,7 +952,7 @@ export function createAuctionService(getDb) {
           if (!anyOther) resolveCurrentLot(room, 'All remaining opponents passed');
         }
       }
-      return {};
+      return { checkpoint: true };
     });
   }
 
@@ -825,17 +974,20 @@ export function createAuctionService(getDb) {
         t.currentLotBid = null;
       }
       advanceToNextLot(room);
-      return {};
+      return { checkpoint: true };
     });
   }
 
-  async function placeBid({ roomId, teamId, amount, actionId }) {
+  async function placeBid({ roomId, teamId, amount, stepIncrement, expectedBid, expectedBidCount, actionId, playerId }) {
     return runRoomTx(roomId, (room) => {
       if (actionId && (room.recentActionIds || []).includes(actionId)) {
         return { noBump: true };
       }
+      if (playerId && room.currentPlayerId !== playerId) {
+        return { noBump: true };
+      }
       const cp = getPlayerById(room.currentPlayerId);
-      if (room.phase !== 'AUCTION' || !cp) return { error: 'Bidding is not active right now.' };
+      if (room.phase !== 'AUCTION' || !cp) return { error: 'Bidding is not active right now.', latestRoom: structuredClone(room) };
       const team = room.teams.find((t) => t.id === teamId);
       if (!team || team.quit) return { error: 'You are not active in this room.' };
       if ((room.skippedTeamIds || []).includes(team.id)) return { error: 'You already skipped this player.' };
@@ -843,17 +995,41 @@ export function createAuctionService(getDb) {
       if (cp.isOverseas && team.overseasCount >= MAX_OVERSEAS) {
         return { error: `Overseas limit reached (max ${MAX_OVERSEAS} overseas players).` };
       }
-      if (room.highestBidderId === team.id) return { error: 'You already hold the highest bid!' };
+      if (room.highestBidderId === team.id) return { error: 'You already hold the highest bid!', latestRoom: structuredClone(room) };
 
-      const val = Math.floor(Number(amount));
+      let val = Math.floor(Number(amount));
       if (!Number.isFinite(val) || val <= 0) return { error: 'Invalid bid amount.' };
+
+      const minInc = getMinIncrementForBidCount(room.bidCount || 0);
+      const hasExpected = expectedBid !== undefined;
+      const clientExpectedBid = expectedBid === null ? null : Number(expectedBid);
+      const clientBidCount = Number.isFinite(Number(expectedBidCount)) ? Number(expectedBidCount) : null;
+      const bidDelta = clientBidCount !== null ? (room.bidCount || 0) - clientBidCount : 0;
+      const stepNum = Number(stepIncrement);
+
+      // Smoothly step concurrent same-moment clicks 1-by-1 without jumping +300/+400
+      if (hasExpected && room.highestBid !== null && bidDelta >= 1 && bidDelta <= 2) {
+        if (clientExpectedBid === null && (room.bidCount || 0) <= 2) {
+          const effectiveStep = Number.isFinite(stepNum) && stepNum > 0 ? Math.max(minInc, stepNum) : minInc;
+          if (minInc <= (Number.isFinite(stepNum) && stepNum > 0 ? stepNum : 100)) {
+            val = room.highestBid + effectiveStep;
+          }
+        } else if (clientExpectedBid !== null && room.highestBid > clientExpectedBid) {
+          if (Number.isFinite(stepNum) && stepNum > 0 && minInc <= stepNum && room.highestBid - clientExpectedBid <= minInc * 2) {
+            val = room.highestBid + stepNum;
+          }
+        }
+      }
+
       if (room.highestBid === null && val < cp.basePrice) {
-        return { error: `Opening bid must be at least ₹${cp.basePrice.toLocaleString('en-IN')}.` };
+        return { error: `Opening bid must be at least ₹${cp.basePrice.toLocaleString('en-IN')}.`, latestRoom: structuredClone(room) };
       }
       if (room.highestBid !== null) {
-        const minInc = getMinIncrementForBidCount(room.bidCount || 0);
         if (val < room.highestBid + minInc) {
-          return { error: `Minimum increment at this stage is +₹${minInc.toLocaleString('en-IN')} (next min ₹${(room.highestBid + minInc).toLocaleString('en-IN')}).` };
+          return {
+            error: `Price updated to ₹${room.highestBid.toLocaleString('en-IN')} (next min ₹${(room.highestBid + minInc).toLocaleString('en-IN')}).`,
+            latestRoom: structuredClone(room)
+          };
         }
       }
 
@@ -861,7 +1037,8 @@ export function createAuctionService(getDb) {
       if (val > maxAllowed) {
         const remainingSlots = Math.max(0, MAX_SQUAD_SIZE - (team.squad?.length || 0) - 1);
         return {
-          error: `Cannot buy! Max bid limit reached (₹${maxAllowed.toLocaleString('en-IN')}) — you still need ${remainingSlots + 1} player${remainingSlots + 1 > 1 ? 's' : ''} (₹${MIN_RESERVE_PER_SLOT} reserve × ${remainingSlots} slots).`
+          error: `Cannot buy! Max bid limit reached (₹${maxAllowed.toLocaleString('en-IN')}) — you still need ${remainingSlots + 1} player${remainingSlots + 1 > 1 ? 's' : ''} (₹${MIN_RESERVE_PER_SLOT} reserve × ${remainingSlots} slots).`,
+          latestRoom: structuredClone(room)
         };
       }
 
@@ -890,9 +1067,12 @@ export function createAuctionService(getDb) {
     });
   }
 
-  async function skipLot({ roomId, teamId, actionId }) {
+  async function skipLot({ roomId, teamId, actionId, playerId }) {
     return runRoomTx(roomId, (room) => {
       if (actionId && (room.recentActionIds || []).includes(actionId)) {
+        return { noBump: true };
+      }
+      if (playerId && room.currentPlayerId !== playerId) {
         return { noBump: true };
       }
       if (room.phase !== 'AUCTION' || !room.currentPlayerId) return { error: 'No active player to skip.' };
@@ -905,6 +1085,9 @@ export function createAuctionService(getDb) {
       }
 
       const skipped = new Set(room.skippedTeamIds || []);
+      if (skipped.has(team.id)) {
+        return { noBump: true };
+      }
       skipped.add(team.id);
       room.skippedTeamIds = Array.from(skipped);
 
@@ -927,10 +1110,10 @@ export function createAuctionService(getDb) {
       if (room.phase !== 'ROLE_SELECTION') return { error: 'Role selection is not open.' };
       const team = room.teams.find((t) => t.id === teamId);
       if (!team) return { error: 'Team not found.' };
-      if ((team.squad?.length || 0) === 0) {
+      if ((team.squad?.length || 0) < MAX_SQUAD_SIZE) {
         team.disqualified = true;
         team.roles = { captainId: '', wicketkeeperId: '', impactPlayerId: '', confirmed: true };
-        return {};
+        return { error: `Incomplete squad (${team.squad?.length || 0}/12). Teams without 12 players are disqualified.` };
       }
       const has = (id) => id && team.squad.some((p) => (p.id || p) === id);
       if (!has(captainId) || !has(wicketkeeperId) || !has(impactPlayerId)) {
@@ -940,7 +1123,7 @@ export function createAuctionService(getDb) {
         return { error: 'Impact Player (12th man) must be different from Captain and Wicketkeeper.' };
       }
       team.roles = { captainId, wicketkeeperId, impactPlayerId, confirmed: true };
-      return {};
+      return { checkpoint: true };
     });
   }
 
@@ -949,7 +1132,7 @@ export function createAuctionService(getDb) {
       if (room.phase !== 'ROLE_SELECTION') return { error: 'Auction must finish before analyzing teams.' };
       if (!room.teams.some((t) => t.id === teamId)) return { error: 'Unauthorized.' };
 
-      const unconfirmed = room.teams.filter((t) => !t.quit && !t.disqualified && (t.squad?.length || 0) > 0 && !t.roles.confirmed);
+      const unconfirmed = room.teams.filter((t) => !t.quit && !t.disqualified && (t.squad?.length || 0) >= MAX_SQUAD_SIZE && !t.roles.confirmed);
       if (unconfirmed.length > 0) {
         return { error: `Waiting for ${unconfirmed.map((t) => t.name).join(', ')} to manually choose and lock in Captain, WK & Impact Player.` };
       }
@@ -965,28 +1148,33 @@ export function createAuctionService(getDb) {
         entry.isWinner = idx === 0 && !entry.disqualified;
       });
 
+      const criteriaLabels = [
+        { key: 'topOrderBatting', label: 'Top-Order Batting' },
+        { key: 'middleOrderBatting', label: 'Middle-Order Batting' },
+        { key: 'lowerOrderBatting', label: 'Lower-Order Batting' },
+        { key: 'paceBowling', label: 'Pace Bowling' },
+        { key: 'spinBowling', label: 'Spin Bowling' },
+        { key: 'lrCombination', label: 'L/R Bat & Bowl Combo' },
+        { key: 'overallBalance', label: 'Team Balance' },
+        { key: 'captaincy', label: 'Captaincy' },
+        { key: 'wicketkeeping', label: 'Wicketkeeper' },
+        { key: 'impactPlayer', label: 'Impact Player' },
+        { key: 'fieldingQuality', label: 'Fielding Quality' }
+      ];
       const winner = evaluated.find((e) => e.isWinner) || null;
+      evaluated.forEach((entry) => {
+        entry.postMortem = buildPostMortem(entry, winner, criteriaLabels);
+        delete entry._diag;
+      });
       room.analysis = {
         generatedAt: Date.now(),
         winnerTeamId: winner?.teamId || null,
         winnerTeamName: winner?.teamName || 'No Qualified Winner',
-        criteriaLabels: [
-          { key: 'topOrderBatting', label: 'Top-Order Batting' },
-          { key: 'middleOrderBatting', label: 'Middle-Order Batting' },
-          { key: 'lowerOrderBatting', label: 'Lower-Order Batting' },
-          { key: 'paceBowling', label: 'Pace Bowling' },
-          { key: 'spinBowling', label: 'Spin Bowling' },
-          { key: 'lrCombination', label: 'L/R Bat & Bowl Combo' },
-          { key: 'overallBalance', label: 'Team Balance' },
-          { key: 'captaincy', label: 'Captaincy' },
-          { key: 'wicketkeeping', label: 'Wicketkeeper' },
-          { key: 'impactPlayer', label: 'Impact Player' },
-          { key: 'fieldingQuality', label: 'Fielding Quality' }
-        ],
+        criteriaLabels,
         standings: evaluated
       };
       room.phase = 'ANALYZED';
-      return {};
+      return { checkpoint: true };
     });
   }
 
@@ -1067,5 +1255,5 @@ export function createAuctionService(getDb) {
     return { room };
   }
 
-  return { createRoom, joinRoom, leaveRoom, startGame, placeBid, skipLot, submitRoles, analyzeTeams, getState };
+  return { createRoom, joinRoom, leaveRoom, startGame, placeBid, skipLot, submitRoles, analyzeTeams, getState, subscribeRoom };
 }

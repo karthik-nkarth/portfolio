@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './AuctionGame.css';
 
-const APP_VERSION = 'v1.7';
+const APP_VERSION = 'v1.11';
 const formatINR = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
 
 function formatClock(ms) {
@@ -118,6 +118,7 @@ function AuctionGameInner() {
   const [joinRoomId, setJoinRoomId] = useState('');
   const [joinPin, setJoinPin] = useState('');
   const [joinName, setJoinName] = useState('');
+  const [spectateMode, setSpectateMode] = useState(false);
   const [landingErr, setLandingErr] = useState('');
   const [bidErr, setBidErr] = useState('');
   const [roleErr, setRoleErr] = useState('');
@@ -331,7 +332,7 @@ function AuctionGameInner() {
 
   function applyNewState(next, nextTeamId = null, force = false) {
     if (!next) return;
-    if (!force && next.version && next.version < versionRef.current) return;
+    if (!force && next.version && next.version <= versionRef.current) return;
     versionRef.current = next.version || 0;
     setState(next);
     setReconnecting(false);
@@ -371,6 +372,51 @@ function AuctionGameInner() {
     };
   }, [Boolean(state)]);
 
+  const sseConnectedRef = useRef(false);
+
+  // Instant SSE stream so every individual bid arrives sequentially without polling stalls
+  useEffect(() => {
+    if (!roomId || !teamId || state?.phase === 'ANALYZED' || typeof EventSource === 'undefined') {
+      sseConnectedRef.current = false;
+      return;
+    }
+    const url = `/api/auction/stream?roomId=${encodeURIComponent(roomId)}&teamId=${encodeURIComponent(teamId)}`;
+    const es = new EventSource(url);
+    es.onopen = () => {
+      sseConnectedRef.current = true;
+      setReconnecting(false);
+    };
+    es.onmessage = (ev) => {
+      sseConnectedRef.current = true;
+      try {
+        const data = JSON.parse(ev.data);
+        if (data?.ok && data.state) {
+          initialSyncDoneRef.current = true;
+          applyNewState(data.state);
+        }
+      } catch {}
+    };
+    es.addEventListener('room_error', (ev) => {
+      try {
+        const err = JSON.parse(ev.data || '{}');
+        if (err?.expired) {
+          clearSavedGame();
+          setState(null);
+          setRoomId(null);
+          setTeamId(null);
+          setLandingErr('Previous auction room expired due to inactivity.');
+        }
+      } catch {}
+    });
+    es.onerror = () => {
+      sseConnectedRef.current = false;
+    };
+    return () => {
+      sseConnectedRef.current = false;
+      es.close();
+    };
+  }, [roomId, teamId, state?.phase === 'ANALYZED']);
+
   useEffect(() => {
     if (!roomId || !teamId || state?.phase === 'ANALYZED') return;
     let alive = true;
@@ -383,14 +429,15 @@ function AuctionGameInner() {
         timerId = setTimeout(() => scheduleNext(), 2500);
         return;
       }
-      const baseMs = state?.phase === 'AUCTION' || state?.phase === 'LOT_RESULT' ? 900 : 2500;
+      const inFastPhase = state?.phase === 'AUCTION' || state?.phase === 'LOT_RESULT';
+      const baseMs = inFastPhase ? (sseConnectedRef.current ? 2000 : 750) : 2500;
       const waitMs = customMs ?? baseMs;
       timerId = setTimeout(runPoll, waitMs);
     }
 
     async function runPoll() {
       if (!alive) return;
-      if (mutatingRef.current) return scheduleNext(400);
+      if (mutatingRef.current) return scheduleNext(350);
       const t0 = Date.now();
       const queryV = initialSyncDoneRef.current ? versionRef.current : 0;
       try {
@@ -410,13 +457,14 @@ function AuctionGameInner() {
             }
             return;
           }
-          setReconnecting(true);
+          failCount += 1;
+          if (failCount >= 2) setReconnecting(true);
           return scheduleNext(4000);
         }
         if (!alive || mutatingRef.current) return scheduleNext();
         if (!res.ok || !data.ok) {
           failCount += 1;
-          setReconnecting(true);
+          if (failCount >= 2) setReconnecting(true);
           return scheduleNext(Math.min(6000, 1500 * failCount));
         }
         failCount = 0;
@@ -429,7 +477,7 @@ function AuctionGameInner() {
         scheduleNext();
       } catch {
         failCount += 1;
-        if (alive) setReconnecting(true);
+        if (alive && failCount >= 2) setReconnecting(true);
         scheduleNext(Math.min(6000, 1500 * failCount));
       }
     }
@@ -469,7 +517,7 @@ function AuctionGameInner() {
     const nextId = state?.nextPlayerId;
     if (!nextId) return;
     const img = new Image();
-    img.src = `/api/auction/player-image/${encodeURIComponent(nextId)}?v=4`;
+    img.src = `/api/auction/player-image/${encodeURIComponent(nextId)}?v=5`;
     if (!liveStatsMap[nextId]) {
       fetch(`/api/auction/player-stats/${encodeURIComponent(nextId)}`)
         .then((r) => r.json())
@@ -585,13 +633,13 @@ function AuctionGameInner() {
 
   async function handleJoin(e) {
     e.preventDefault();
-    const res = await apiPost('/join', { roomId: joinRoomId, password: joinPin, teamName: joinName });
+    const res = await apiPost('/join', { roomId: joinRoomId, password: joinPin, teamName: joinName, spectate: spectateMode });
     if (!res.ok) return setLandingErr(res.error);
     versionRef.current = 0;
     applyNewState(res.state, res.teamId, true);
   }
 
-  async function placeInstantBid(amount) {
+  async function placeInstantBid(amount, stepIncrement = 0) {
     if (!state?.currentPlayer || mutatingRef.current) return;
     const me = state.teams.find((t) => t.id === teamId);
     if (!me || state.phase !== 'AUCTION') return;
@@ -605,20 +653,8 @@ function AuctionGameInner() {
       return;
     }
 
+    const bidPlayerId = state.currentPlayer.id;
     const actionId = `${me.id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const prev = state;
-    const optimistic = {
-      ...state,
-      version: (state.version || 0) + 1,
-      highestBid: val,
-      highestBidderId: me.id,
-      highestBidderName: me.name,
-      bidCount: (state.bidCount || 0) + 1,
-      idleEndsAt: null,
-      teams: state.teams.map((t) => (t.id === me.id ? { ...t, currentLotBid: val } : t))
-    };
-    versionRef.current = optimistic.version;
-    setState(optimistic);
     setBidErr('');
     setIsSyncingBid(true);
     triggerHaptic(18);
@@ -627,14 +663,22 @@ function AuctionGameInner() {
 
     mutatingRef.current = true;
     try {
-      const res = await apiPost('/bid', { roomId, teamId, amount: val, actionId });
+      const res = await apiPost('/bid', {
+        roomId,
+        teamId,
+        amount: val,
+        stepIncrement,
+        expectedBid: state.highestBid,
+        expectedBidCount: state.bidCount || 0,
+        actionId,
+        playerId: bidPlayerId
+      });
+      if (res.state) {
+        applyNewState(res.state, null, false);
+      }
       if (!res.ok) {
-        setState(prev);
-        versionRef.current = prev.version || 0;
         setBidErr(res.error);
-        setTimeout(() => setBidErr(''), 3500);
-      } else if (res.state) {
-        applyNewState(res.state, null, true);
+        setTimeout(() => setBidErr(''), 2800);
       }
     } finally {
       mutatingRef.current = false;
@@ -643,30 +687,21 @@ function AuctionGameInner() {
   }
 
   async function handleSkip() {
-    if (!state || mutatingRef.current || state.phase !== 'AUCTION') return;
+    if (!state?.currentPlayer || mutatingRef.current || state.phase !== 'AUCTION') return;
     const me = state.teams.find((t) => t.id === teamId);
     if (!me || state.highestBidderId === me.id || me.skippedCurrent) return;
 
+    const skipPlayerId = state.currentPlayer.id;
     const actionId = `skip-${me.id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const prev = state;
-    const optimistic = {
-      ...state,
-      version: (state.version || 0) + 1,
-      teams: state.teams.map((t) => (t.id === me.id ? { ...t, skippedCurrent: true } : t))
-    };
-    versionRef.current = optimistic.version;
-    setState(optimistic);
-
     mutatingRef.current = true;
     try {
-      const res = await apiPost('/skip', { roomId, teamId, actionId });
+      const res = await apiPost('/skip', { roomId, teamId, actionId, playerId: skipPlayerId });
+      if (res.state) {
+        applyNewState(res.state, null, false);
+      }
       if (!res.ok) {
-        setState(prev);
-        versionRef.current = prev.version || 0;
         setBidErr(res.error);
         setTimeout(() => setBidErr(''), 3000);
-      } else if (res.state) {
-        applyNewState(res.state, null, true);
       }
     } finally {
       mutatingRef.current = false;
@@ -748,9 +783,26 @@ function AuctionGameInner() {
                 </div>
                 <div>
                   <label className="ag-label" htmlFor="agTeam">Your Team / Manager Name</label>
-                  <input id="agTeam" maxLength={22} value={joinName} onChange={(e) => setJoinName(e.target.value)} placeholder="e.g. Royal Challengers" required />
+                  <input
+                    id="agTeam"
+                    maxLength={22}
+                    value={joinName}
+                    onChange={(e) => setJoinName(e.target.value)}
+                    placeholder={spectateMode ? 'Optional in Spectate mode' : 'e.g. Royal Challengers'}
+                    required={!spectateMode}
+                  />
                 </div>
-                <button type="submit" className="ag-btn ag-btn-cyan ag-btn-lg">Join Room</button>
+                <label className="ag-spectate-check">
+                  <input
+                    type="checkbox"
+                    checked={spectateMode}
+                    onChange={(e) => setSpectateMode(e.target.checked)}
+                  />
+                  <span>Spectate <small className="ag-muted-xs">(Watch live without bidding)</small></span>
+                </label>
+                <button type="submit" className="ag-btn ag-btn-cyan ag-btn-lg">
+                  {spectateMode ? 'Enter as Spectator' : 'Join Room'}
+                </button>
               </form>
             </article>
           </div>
@@ -761,7 +813,7 @@ function AuctionGameInner() {
             <div className="ag-rule-chip"><strong>₹50,000</strong><span>INR Purse</span></div>
             <div className="ag-rule-chip"><strong>12 Players</strong><span>11 XI + 1 Impact</span></div>
             <div className="ag-rule-chip"><strong>Max 4</strong><span>Overseas Rule</span></div>
-            <div className="ag-rule-chip"><strong>2m / 10s</strong><span>Idle / Bid Clock</span></div>
+            <div className="ag-rule-chip"><strong>1m / 10s</strong><span>Idle / Bid Clock</span></div>
             <div className="ag-rule-chip"><strong>2 Rounds</strong><span>Unsold Comeback</span></div>
             <div className="ag-rule-chip"><strong>11 Metrics</strong><span>Skill + L/R Balance</span></div>
           </section>
@@ -773,8 +825,9 @@ function AuctionGameInner() {
     );
   }
 
-  const me = state.teams.find((t) => t.id === teamId);
-  const inspected = state.teams.find((t) => t.id === (inspectedId || teamId)) || me;
+  const isSpectator = Boolean(state.isSpectator) || teamId === 'SPECTATOR';
+  const me = isSpectator ? null : state.teams.find((t) => t.id === teamId);
+  const inspected = state.teams.find((t) => t.id === (inspectedId || me?.id || state.teams[0]?.id)) || me || state.teams[0];
   const p = state.currentPlayer;
   const isLeader = state.highestBidderId === me?.id;
   const isSkipped = me?.skippedCurrent;
@@ -788,29 +841,30 @@ function AuctionGameInner() {
     ? Math.max(0, state.timerEndsAt - nowServerMs)
     : state.idleEndsAt
     ? Math.max(0, state.idleEndsAt - nowServerMs)
-    : 120000;
+    : 60000;
   const timerPct = isBidClock
     ? Math.max(0, Math.min(100, (msLeft / 10000) * 100))
-    : Math.max(0, Math.min(100, (msLeft / 120000) * 100));
+    : Math.max(0, Math.min(100, (msLeft / 60000) * 100));
   const urgent = isBidClock ? msLeft <= 3500 : msLeft <= 15000;
 
   const displayStats = (p && liveStatsMap[p.id]?.stats) || p?.stats;
 
   const baseOrCurrent = state.highestBid === null ? (p?.basePrice || 300) : state.highestBid;
   const quickButtons = [];
-  if (bidCount < 5) {
+  if (bidCount < 4) {
     quickButtons.push({
-      label: '+₹100',
-      val: state.highestBid === null ? baseOrCurrent : baseOrCurrent + 100
+      label: state.highestBid === null ? 'Bid Base' : '+₹100',
+      val: state.highestBid === null ? baseOrCurrent : baseOrCurrent + 100,
+      step: state.highestBid === null ? 0 : 100
     });
   }
-  if (bidCount < 10) {
-    quickButtons.push({ label: '+₹200', val: baseOrCurrent + 200 });
+  if (bidCount < 8) {
+    quickButtons.push({ label: '+₹200', val: baseOrCurrent + 200, step: 200 });
   }
-  if (bidCount < 15) {
-    quickButtons.push({ label: '+₹500', val: baseOrCurrent + 500 });
+  if (bidCount < 12) {
+    quickButtons.push({ label: '+₹500', val: baseOrCurrent + 500, step: 500 });
   }
-  quickButtons.push({ label: '+₹1,000', val: baseOrCurrent + 1000 });
+  quickButtons.push({ label: '+₹1,000', val: baseOrCurrent + 1000, step: 1000 });
 
   const inAuctionView = state.phase === 'AUCTION' || state.phase === 'LOT_RESULT';
   const modalTeam = modalTeamId ? state.teams.find((t) => t.id === modalTeamId) : null;
@@ -876,7 +930,9 @@ function AuctionGameInner() {
                 : 'Final Standings'}
             </span>
           </div>
-          {me && (
+          {isSpectator ? (
+            <div className="ag-purse-pill ag-purse-mob"><strong>👁 SPECTATING</strong></div>
+          ) : me && (
             <div className="ag-purse-pill ag-purse-mob">
               <strong>{formatINR(me.purse)}</strong>
               <span>•</span>
@@ -888,7 +944,9 @@ function AuctionGameInner() {
         </div>
 
         <div className="ag-topbar-group ag-topbar-desktop-right">
-          {me && (
+          {isSpectator ? (
+            <div className="ag-purse-pill"><strong>👁 SPECTATOR MODE</strong></div>
+          ) : me && (
             <div className="ag-purse-pill">
               <span>Purse: <strong>{formatINR(me.purse)}</strong></span>
               <span>•</span>
@@ -1054,7 +1112,7 @@ function AuctionGameInner() {
                     inspected.squad.map((sp) => (
                       <div key={sp.id} className="ag-squad-row">
                         <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {sp.name} <span className="ag-muted-xs">({sp.role})</span>
+                          {sp.isOverseas ? '✈️ ' : ''}{sp.name} <span className="ag-muted-xs">({sp.role})</span>
                         </span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                           <strong style={{ color: '#fbbf24', fontFamily: 'ui-monospace, monospace' }}>{formatINR(sp.boughtPrice)}</strong>
@@ -1090,7 +1148,7 @@ function AuctionGameInner() {
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <span className="ag-pill ag-pill-era">{p.era}</span>
                       <span className={`ag-pill ${p.isOverseas ? 'ag-pill-os' : 'ag-pill-ind'}`}>
-                        {p.isOverseas ? `OVERSEAS (${p.country})` : 'INDIAN'}
+                        {p.isOverseas ? `✈️ OVERSEAS (${p.country})` : 'INDIAN'}
                       </span>
                     </div>
                     <span className="ag-pill ag-pill-role">{p.role}</span>
@@ -1098,7 +1156,7 @@ function AuctionGameInner() {
 
                   <div className="ag-centerpiece">
                     <div className="ag-portrait">
-                      <img key={p.id} src={`/api/auction/player-image/${encodeURIComponent(p.id)}?v=4`} alt={p.name} />
+                      <img key={p.id} src={`/api/auction/player-image/${encodeURIComponent(p.id)}?v=5`} alt={p.name} />
                     </div>
                     <div className="ag-player-meta">
                       <h2 className="ag-player-name">{p.name}</h2>
@@ -1156,39 +1214,46 @@ function AuctionGameInner() {
                   </div>
                 </div>
 
-                <div className="ag-actions-dock">
-                  <div className="ag-bid-buttons-grid" style={{ gridTemplateColumns: `repeat(${quickButtons.length}, minmax(0, 1fr))` }}>
-                    {quickButtons.map((btn) => (
-                      <button
-                        key={btn.label}
-                        type="button"
-                        className="ag-bid-step-btn"
-                        disabled={cannotBid || btn.val > (me?.maxBidAllowed || 0)}
-                        onClick={() => placeInstantBid(btn.val)}
-                      >
-                        {btn.label}
-                        <span>{formatINR(btn.val)}</span>
-                      </button>
-                    ))}
+                {isSpectator ? (
+                  <div className="ag-spectator-banner">
+                    <span>👁 <strong>Spectator View</strong> • Bids: <strong style={{ color: '#fbbf24' }}>{bidCount}</strong></span>
+                    <span className="ag-muted-xs">Watching live table</span>
                   </div>
-
-                  <div className="ag-auction-actions-meta">
-                    <button
-                      type="button"
-                      className="ag-btn ag-btn-danger-outline ag-skip-btn"
-                      disabled={state.phase !== 'AUCTION' || isLeader || isSkipped}
-                      onClick={handleSkip}
-                    >
-                      SKIP ❌
-                    </button>
-                    <div className="ag-bid-meta-pills">
-                      <span>Bids: <strong style={{ color: '#fbbf24' }}>{bidCount}</strong></span>
-                      {me && <span style={{ fontFamily: 'ui-monospace, monospace' }}>Max: <strong>{formatINR(me.maxBidAllowed)}</strong></span>}
+                ) : (
+                  <div className="ag-actions-dock">
+                    <div className="ag-bid-buttons-grid" style={{ gridTemplateColumns: `repeat(${quickButtons.length}, minmax(0, 1fr))` }}>
+                      {quickButtons.map((btn) => (
+                        <button
+                          key={btn.label}
+                          type="button"
+                          className="ag-bid-step-btn"
+                          disabled={cannotBid || btn.val > (me?.maxBidAllowed || 0)}
+                          onClick={() => placeInstantBid(btn.val, btn.step)}
+                        >
+                          {btn.label}
+                          <span>{formatINR(btn.val)}</span>
+                        </button>
+                      ))}
                     </div>
-                  </div>
 
-                  {bidErr && <div className="ag-error">{bidErr}</div>}
-                </div>
+                    <div className="ag-auction-actions-meta">
+                      <button
+                        type="button"
+                        className="ag-btn ag-btn-danger-outline ag-skip-btn"
+                        disabled={state.phase !== 'AUCTION' || isLeader || isSkipped}
+                        onClick={handleSkip}
+                      >
+                        SKIP ❌
+                      </button>
+                      <div className="ag-bid-meta-pills">
+                        <span>Bids: <strong style={{ color: '#fbbf24' }}>{bidCount}</strong></span>
+                        {me && <span style={{ fontFamily: 'ui-monospace, monospace' }}>Max: <strong>{formatINR(me.maxBidAllowed)}</strong></span>}
+                      </div>
+                    </div>
+
+                    {bidErr && <div className="ag-error">{bidErr}</div>}
+                  </div>
+                )}
               </div>
             </main>
         </section>
@@ -1209,8 +1274,14 @@ function AuctionGameInner() {
               ))}
             </div>
 
-            {me?.disqualified ? (
-              <div className="ag-error" style={{ margin: '18px 0' }}>Your team drafted 0 players and has been disqualified from this auction.</div>
+            {isSpectator ? (
+              <div style={{ textAlign: 'center', color: '#7dd3fc', padding: '18px 0', fontWeight: 600 }}>
+                👁 Spectating — Managers are locking in Captain, Wicketkeeper &amp; Impact Player...
+              </div>
+            ) : me?.disqualified || (me?.squadCount || 0) < 12 ? (
+              <div className="ag-error" style={{ margin: '18px 0' }}>
+                Your team drafted {me?.squadCount || 0}/12 players and is disqualified (full 12-player squad required — role selection locked).
+              </div>
             ) : me?.squad?.length > 0 ? (
               <div className="ag-role-grid">
                 {[
@@ -1223,7 +1294,7 @@ function AuctionGameInner() {
                     <select value={rolesDraft[key]} onChange={(e) => setRolesDraft((r) => ({ ...r, [key]: e.target.value }))}>
                       <option value="">-- Choose {label.split(' ')[0]} --</option>
                       {me.squad.map((sp) => (
-                        <option key={sp.id} value={sp.id}>{sp.name} ({sp.role} • {sp.country})</option>
+                        <option key={sp.id} value={sp.id}>{sp.isOverseas ? '✈️ ' : ''}{sp.name} ({sp.role} • {sp.country})</option>
                       ))}
                     </select>
                     <div className="ag-muted-xs" style={{ marginTop: 6 }}>{hint}</div>
@@ -1232,19 +1303,21 @@ function AuctionGameInner() {
               </div>
             ) : null}
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'center', padding: 16, borderRadius: 14, background: 'rgba(245, 158, 11, 0.06)', border: '1px dashed rgba(245, 158, 11, 0.35)' }}>
-              {!me?.disqualified && (
-                <button type="button" className="ag-btn ag-btn-cyan" onClick={handleLockRoles}>Lock In My Roles</button>
-              )}
-              <button
-                type="button"
-                className="ag-btn ag-btn-gold ag-btn-xl"
-                disabled={state.teams.some((t) => !t.quit && !t.disqualified && t.squadCount > 0 && !t.roles.confirmed)}
-                onClick={handleAnalyze}
-              >
-                ⚡ ANALYZE ALL TEAMS &amp; DECLARE WINNER
-              </button>
-            </div>
+            {!isSpectator && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'center', padding: 16, borderRadius: 14, background: 'rgba(245, 158, 11, 0.06)', border: '1px dashed rgba(245, 158, 11, 0.35)' }}>
+                {!me?.disqualified && (me?.squadCount || 0) >= 12 && (
+                  <button type="button" className="ag-btn ag-btn-cyan" onClick={handleLockRoles}>Lock In My Roles</button>
+                )}
+                <button
+                  type="button"
+                  className="ag-btn ag-btn-gold ag-btn-xl"
+                  disabled={state.teams.some((t) => !t.quit && !t.disqualified && t.squadCount >= 12 && !t.roles.confirmed)}
+                  onClick={handleAnalyze}
+                >
+                  ⚡ ANALYZE ALL TEAMS &amp; DECLARE WINNER
+                </button>
+              </div>
+            )}
             {roleErr && <div className="ag-error" style={{ marginTop: 10 }}>{roleErr}</div>}
           </div>
         </section>
@@ -1359,7 +1432,7 @@ function AuctionGameInner() {
                   >
                     <img
                       className="ag-award-thumb"
-                      src={`/api/auction/player-image/${encodeURIComponent(aw.player.id)}?v=4`}
+                      src={`/api/auction/player-image/${encodeURIComponent(aw.player.id)}?v=5`}
                       alt={aw.player.name}
                     />
                     <div style={{ minWidth: 0, textAlign: 'left' }}>
@@ -1443,6 +1516,21 @@ function AuctionGameInner() {
                         )}
                       </div>
 
+                      {!t.isWinner && t.postMortem && (
+                        <div className="ag-postmortem-box">
+                          <div className="ag-postmortem-row is-good">
+                            <span className="ag-pm-badge">WHAT WENT RIGHT</span>
+                            <span>{t.postMortem.wentRight}</span>
+                          </div>
+                          <div className="ag-postmortem-row is-loss">
+                            <span className="ag-pm-badge">
+                              {t.disqualified ? 'DISQUALIFIED' : `MISSED #1 BY ${t.postMortem.pointsBehind} PTS`}
+                            </span>
+                            <span>{t.postMortem.whyLost}</span>
+                          </div>
+                        </div>
+                      )}
+
                       {isExpanded && squadList.length > 0 && (
                         <div className="ag-xi-panel">
                           <div className="ag-xi-grid">
@@ -1495,13 +1583,13 @@ function AuctionGameInner() {
           </button>
           <span className="ag-version-pill">{APP_VERSION}</span>
         </div>
-        {inAuctionView && me && (
+        {inAuctionView && (me || state.teams[0]) && (
           <button
             type="button"
             className="ag-mob-squad-fab"
-            onClick={() => setModalTeamId(me.id)}
+            onClick={() => setModalTeamId(me?.id || state.teams[0]?.id)}
           >
-            Squads ({me.squadCount}/12) +
+            {me ? `Squads (${me.squadCount}/12) +` : 'View Squads +'}
           </button>
         )}
       </div>
@@ -1559,7 +1647,7 @@ function AuctionGameInner() {
             ) : (
               modalTeam.squad.map((sp) => (
                 <div key={sp.id} className="ag-squad-row" style={{ marginBottom: 6 }}>
-                  <span>{sp.name} <span className="ag-muted-xs">({sp.role})</span></span>
+                  <span>{sp.isOverseas ? '✈️ ' : ''}{sp.name} <span className="ag-muted-xs">({sp.role})</span></span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <strong style={{ color: '#fbbf24' }}>{formatINR(sp.boughtPrice)}</strong>
                     <button type="button" className="ag-plus-btn" onClick={() => setInspectedPlayer(sp)}>+</button>
@@ -1582,7 +1670,7 @@ function AuctionGameInner() {
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <span className="ag-pill ag-pill-era">{inspectedPlayer.era}</span>
                   <span className={`ag-pill ${inspectedPlayer.isOverseas ? 'ag-pill-os' : 'ag-pill-ind'}`}>
-                    {inspectedPlayer.isOverseas ? `OS (${inspectedPlayer.country})` : 'INDIAN'}
+                    {inspectedPlayer.isOverseas ? `✈️ OS (${inspectedPlayer.country})` : 'INDIAN'}
                   </span>
                 </div>
                 <button type="button" className="ag-icon-btn" onClick={() => setInspectedPlayer(null)}>✕</button>
@@ -1591,7 +1679,7 @@ function AuctionGameInner() {
                 <div className="ag-spotlight" />
                 <div className="ag-mini-hero">
                   <div className="ag-mini-portrait">
-                    <img key={inspectedPlayer.id} src={`/api/auction/player-image/${encodeURIComponent(inspectedPlayer.id)}?v=4`} alt={inspectedPlayer.name} />
+                    <img key={inspectedPlayer.id} src={`/api/auction/player-image/${encodeURIComponent(inspectedPlayer.id)}?v=5`} alt={inspectedPlayer.name} />
                   </div>
                   <div className="ag-mini-info">
                     <h2 className="ag-mini-name">{inspectedPlayer.name}</h2>

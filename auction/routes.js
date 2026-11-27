@@ -82,6 +82,50 @@ export function createAuctionRouter(getDb) {
     }
   });
 
+  router.get('/stream', async (req, res) => {
+    const { roomId, teamId } = req.query;
+    if (!roomId) return res.status(400).end();
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    let closed = false;
+    let lastSentVer = -1;
+    const pushRoom = (room) => {
+      if (closed || !room) return;
+      const ver = room.version || 0;
+      if (ver <= lastSentVer) return;
+      lastSentVer = ver;
+      try {
+        const payload = JSON.stringify({ ok: true, state: serializeRoom(room, teamId || null) });
+        res.write(`data: ${payload}\n\n`);
+      } catch {}
+    };
+
+    const unsub = service.subscribeRoom(roomId, pushRoom);
+    try {
+      const init = await service.getState({ roomId });
+      if (init?.room) pushRoom(init.room);
+      else if (init?.error) {
+        res.write(`event: room_error\ndata: ${JSON.stringify({ error: init.error, expired: Boolean(init.expired) })}\n\n`);
+      }
+    } catch {}
+
+    const heartbeat = setInterval(() => {
+      if (!closed) {
+        try { res.write(': ping\n\n'); } catch {}
+      }
+    }, 20000);
+
+    req.on('close', () => {
+      closed = true;
+      clearInterval(heartbeat);
+      unsub();
+    });
+  });
+
   router.post('/start', async (req, res) => {
     try {
       const result = await service.startGame(req.body || {});
@@ -105,7 +149,13 @@ export function createAuctionRouter(getDb) {
   router.post('/bid', async (req, res) => {
     try {
       const result = await service.placeBid(req.body || {});
-      if (result.error) return res.status(400).json({ ok: false, error: result.error });
+      if (result.error) {
+        return res.status(400).json({
+          ok: false,
+          error: result.error,
+          state: result.latestRoom ? serializeRoom(result.latestRoom, req.body?.teamId) : undefined
+        });
+      }
       res.json({ ok: true, state: serializeRoom(result.room, req.body?.teamId) });
     } catch {
       res.status(500).json({ ok: false, error: 'Failed to place bid.' });
