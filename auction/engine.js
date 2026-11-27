@@ -509,9 +509,11 @@ export function serializeRoom(room, viewerTeamId = null) {
     bidCount: room.bidCount || 0,
     minIncrement: getMinIncrementForBidCount(room.bidCount || 0),
     idleEndsAt: room.idleEndsAt || null,
+    idleMsLeft: room.idleEndsAt ? Math.max(0, room.idleEndsAt - now) : null,
     timerEndsAt: room.timerEndsAt || null,
     timerMsLeft: room.timerEndsAt ? Math.max(0, room.timerEndsAt - now) : null,
     lotResultEndsAt: room.lotResultEndsAt || null,
+    lotResultMsLeft: room.lotResultEndsAt ? Math.max(0, room.lotResultEndsAt - now) : null,
     skippedTeamIds: room.skippedTeamIds || [],
     bidHistory: room.bidHistory || [],
     lastLotOutcome: room.lastLotOutcome
@@ -520,6 +522,7 @@ export function serializeRoom(room, viewerTeamId = null) {
     analysis: room.analysis,
     finishedAt: room.finishedAt || null,
     expiresAt: room.expiresAt || null,
+    expiresMsLeft: room.expiresAt ? Math.max(0, room.expiresAt - now) : null,
     viewerTeamId,
     isSpectator: viewerTeamId === 'SPECTATOR',
     recommendedLotSize: getLotSizeForTeamCount(room.teams.length),
@@ -713,7 +716,7 @@ export function createAuctionService(getDb, options = {}) {
       );
       roomListeners.set(roomId, { unsub, lastAccess: Date.now() });
       for (const [id, entry] of roomListeners.entries()) {
-        if (Date.now() - entry.lastAccess > 120000) {
+        if (Date.now() - entry.lastAccess > 30000) {
           try { entry.unsub(); } catch {}
           roomListeners.delete(id);
         }
@@ -721,36 +724,86 @@ export function createAuctionService(getDb, options = {}) {
     } catch {}
   }
 
-  async function loadRoomIntoMemory(db, roomId) {
-    const inMem = memoryRooms.get(roomId);
-    if (inMem) {
-      if (db) ensureListener(db, roomId);
-      return inMem;
-    }
-    if (!db) return null;
-    if (Date.now() < quotaCooldownUntil) {
-      const err = new Error('Database daily quota reached.');
-      err.isQuota = true;
-      throw err;
-    }
-    const snap = await db.collection(COLLECTION).doc(roomId).get();
-    if (!snap.exists) return null;
-    cacheRoom(snap.data());
-    ensureListener(db, roomId);
-    return memoryRooms.get(roomId);
-  }
-
-  // Execute mutations sequentially in RAM and checkpoint to Firestore only at meaningful milestones
-  // (joins, start, lot settlements SOLD/UNSOLD, round shifts, roles, analysis) — cutting writes ~85-90%.
+  // Serialize intra-lambda writes with FIFO queue, and use atomic Firestore transactions
+  // so multi-lambda serverless deployments (Vercel) always share live bids & 10s timer resets.
   async function runRoomTx(roomId, mutator) {
     return enqueueRoomWrite(roomId, async () => {
       const db = getDb();
       const now = Date.now();
-      let room = null;
+      if (!db) {
+        const room = memoryRooms.get(roomId);
+        if (!room) return { error: 'Room not found.', status: 404 };
+        if (room.expiresAt && now >= room.expiresAt) {
+          evictLocalRoom(roomId);
+          return { error: 'Room expired due to inactivity.', status: 404, expired: true };
+        }
+        advanceTimeIfNeeded(room);
+        const res = mutator(room);
+        if (res?.error) return res;
+        if (res?.deleteRoom) {
+          evictLocalRoom(roomId);
+          return { deleted: true };
+        }
+        if (!res?.noBump) {
+          room.version = (room.version || 0) + 1;
+          refreshExpiry(room);
+        }
+        cacheRoom(room);
+        return { room };
+      }
+
+      if (now < quotaCooldownUntil) {
+        return {
+          error: 'Database daily quota reached (resets at midnight PT / ~1:30 PM IST). Upgrade to Blaze or try after reset.',
+          status: 503,
+          quotaExceeded: true
+        };
+      }
+
+      const ref = db.collection(COLLECTION).doc(roomId);
       try {
-        room = await loadRoomIntoMemory(db, roomId);
+        const out = await db.runTransaction(async (tx) => {
+          const snap = await tx.get(ref);
+          if (!snap.exists) return { error: 'Room not found.', status: 404 };
+          const room = snap.data();
+          if (room.expiresAt && Date.now() >= room.expiresAt) {
+            tx.delete(ref);
+            return { error: 'Room expired due to inactivity.', status: 404, expired: true, _evict: true };
+          }
+          const timeChanged = advanceTimeIfNeeded(room);
+          const res = mutator(room);
+          if (res?.error) {
+            if (timeChanged) {
+              refreshExpiry(room);
+              tx.set(ref, room);
+            }
+            return res;
+          }
+          if (res?.deleteRoom) {
+            tx.delete(ref);
+            return { deleted: true, _evict: true };
+          }
+          if (!res?.noBump) {
+            room.version = (room.version || 0) + 1;
+            refreshExpiry(room);
+          } else if (timeChanged) {
+            refreshExpiry(room);
+          }
+          if (!res?.noBump || timeChanged) tx.set(ref, room);
+          return { room };
+        });
+        if (out?._evict) {
+          evictLocalRoom(roomId);
+          delete out._evict;
+          return out;
+        }
+        if (out?.room) {
+          cacheRoom(out.room);
+          ensureListener(db, roomId);
+        }
+        return out;
       } catch (err) {
-        if (err?.isQuota || isQuotaError(err)) {
+        if (isQuotaError(err)) {
           quotaCooldownUntil = Date.now() + 30000;
           return {
             error: 'Database daily quota reached (resets at midnight PT / ~1:30 PM IST). Upgrade to Blaze or try after reset.',
@@ -760,63 +813,6 @@ export function createAuctionService(getDb, options = {}) {
         }
         throw err;
       }
-
-      if (!room) return { error: 'Room not found.', status: 404 };
-      if (room.expiresAt && now >= room.expiresAt) {
-        await deleteRoomCompletely(db, roomId);
-        return { error: 'Room expired due to inactivity.', status: 404, expired: true };
-      }
-
-      const prevPhase = room.phase;
-      const prevRound = room.round;
-      const timeChanged = advanceTimeIfNeeded(room);
-      const res = mutator(room);
-
-      if (res?.deleteRoom) {
-        await deleteRoomCompletely(db, roomId);
-        return { deleted: true };
-      }
-
-      const settledOrMilestone =
-        (room.phase !== prevPhase && (room.phase === 'LOT_RESULT' || room.phase === 'ROLE_SELECTION' || room.phase === 'ANALYZED')) ||
-        room.round !== prevRound;
-
-      const shouldCheckpoint = Boolean(db && Date.now() >= quotaCooldownUntil && (res?.checkpoint || settledOrMilestone));
-
-      if (res?.error) {
-        if (timeChanged) {
-          refreshExpiry(room);
-          cacheRoom(room);
-          if (db && settledOrMilestone && Date.now() >= quotaCooldownUntil) {
-            db.collection(COLLECTION).doc(roomId).set(structuredClone(room)).catch((err) => {
-              if (isQuotaError(err)) quotaCooldownUntil = Date.now() + 30000;
-            });
-          }
-        }
-        return res;
-      }
-
-      if (!res?.noBump) {
-        room.version = (room.version || 0) + 1;
-        refreshExpiry(room);
-      } else if (timeChanged) {
-        refreshExpiry(room);
-      }
-
-      if (!res?.noBump || timeChanged) {
-        cacheRoom(room);
-      }
-
-      if (shouldCheckpoint) {
-        try {
-          await db.collection(COLLECTION).doc(roomId).set(structuredClone(room));
-        } catch (err) {
-          if (isQuotaError(err)) quotaCooldownUntil = Date.now() + 30000;
-          else throw err;
-        }
-      }
-
-      return { room: memoryRooms.get(roomId) || room };
     });
   }
 

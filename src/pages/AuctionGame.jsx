@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './AuctionGame.css';
 
-const APP_VERSION = 'v1.11';
+const APP_VERSION = 'v1.12';
 const formatINR = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
 
 function formatClock(ms) {
@@ -156,16 +156,22 @@ function AuctionGameInner() {
   const mutatingRef = useRef(false);
   const serverOffsetRef = useRef(0);
   const guardActiveRef = useRef(false);
+  const deadlinesRef = useRef({
+    bidDeadline: null,
+    idleDeadline: null,
+    expiresDeadline: null
+  });
 
   function syncClock(serverNow, reqStartMs, reqEndMs) {
-    setPingMs(Math.max(1, reqEndMs - reqStartMs));
-    if (!serverNow) return;
+    const rtt = Math.max(1, reqEndMs - reqStartMs);
+    setPingMs(rtt);
+    if (!serverNow || rtt > 1200) return;
     const midpoint = (reqStartMs + reqEndMs) / 2;
     const sampleOffset = serverNow - midpoint;
     serverOffsetRef.current = serverOffsetRef.current === 0
       ? sampleOffset
       : serverOffsetRef.current * 0.6 + sampleOffset * 0.4;
-    setNowServerMs(Date.now() + serverOffsetRef.current);
+    setNowServerMs(Date.now());
   }
 
   function triggerHaptic(pattern) {
@@ -340,7 +346,32 @@ function AuctionGameInner() {
   function applyNewState(next, nextTeamId = null, force = false) {
     if (!next) return;
     if (!force && next.version && next.version <= versionRef.current) return;
+    const prevVersion = versionRef.current;
     versionRef.current = next.version || 0;
+
+    // Anchor display countdowns directly from server-computed remaining ms so slow RTT or device clock skew never shortens the 10s reset
+    const recvNow = Date.now();
+    deadlinesRef.current = {
+      bidDeadline: next.timerMsLeft != null
+        ? recvNow + Math.max(0, next.timerMsLeft)
+        : next.timerEndsAt
+        ? next.timerEndsAt - serverOffsetRef.current
+        : null,
+      idleDeadline: next.idleMsLeft != null
+        ? recvNow + Math.max(0, next.idleMsLeft)
+        : next.idleEndsAt
+        ? next.idleEndsAt - serverOffsetRef.current
+        : null,
+      expiresDeadline: next.expiresMsLeft != null
+        ? recvNow + Math.max(0, next.expiresMsLeft)
+        : next.expiresAt
+        ? next.expiresAt - serverOffsetRef.current
+        : null
+    };
+    if ((next.version || 0) !== prevVersion) {
+      lastBeepSecRef.current = null;
+    }
+    setNowServerMs(recvNow);
     setState(next);
     setReconnecting(false);
     saveSnapshot(next);
@@ -379,61 +410,12 @@ function AuctionGameInner() {
     };
   }, [Boolean(state)]);
 
-  const sseConnectedRef = useRef(false);
-
-  // Instant SSE stream (stays open during results so 30-minute auto-wipe quits clients cleanly)
-  useEffect(() => {
-    if (!roomId || !teamId || typeof EventSource === 'undefined') {
-      sseConnectedRef.current = false;
-      return;
-    }
-    const url = `/api/auction/stream?roomId=${encodeURIComponent(roomId)}&teamId=${encodeURIComponent(teamId)}`;
-    const es = new EventSource(url);
-    es.onopen = () => {
-      sseConnectedRef.current = true;
-      setReconnecting(false);
-    };
-    es.onmessage = (ev) => {
-      sseConnectedRef.current = true;
-      try {
-        const data = JSON.parse(ev.data);
-        if (data?.ok && data.state) {
-          initialSyncDoneRef.current = true;
-          applyNewState(data.state);
-        }
-      } catch {}
-    };
-    es.addEventListener('room_error', (ev) => {
-      try {
-        const err = JSON.parse(ev.data || '{}');
-        if (err?.expired) {
-          clearSavedGame();
-          versionRef.current = 0;
-          setShowQuitModal(false);
-          setModalTeamId(null);
-          setInspectedPlayer(null);
-          setRolesDraft({ captainId: '', wicketkeeperId: '', impactPlayerId: '' });
-          setState(null);
-          setRoomId(null);
-          setTeamId(null);
-          setLandingErr(err.error || 'Game session ended — room and all Firebase data were cleared.');
-        }
-      } catch {}
-    });
-    es.onerror = () => {
-      sseConnectedRef.current = false;
-    };
-    return () => {
-      sseConnectedRef.current = false;
-      es.close();
-    };
-  }, [roomId, teamId]);
-
-  // Auto-quit finished results view strictly 30 minutes after results are shown
+  // Auto-quit finished results view strictly 30 minutes after results are shown & notify backend cleanup
   useEffect(() => {
     if (state?.phase !== 'ANALYZED' || !state?.expiresAt) return;
-    const expireAt = state.expiresAt;
+    const expireAt = deadlinesRef.current.expiresDeadline || state.expiresAt;
     const quitFinishedSession = () => {
+      fetch(`/api/auction/state?roomId=${encodeURIComponent(roomId || state.roomId)}`).catch(() => {});
       clearSavedGame();
       versionRef.current = 0;
       setShowQuitModal(false);
@@ -446,14 +428,13 @@ function AuctionGameInner() {
       setLandingErr('Game ended — room and all Firebase data were automatically cleared 30 minutes after results.');
     };
 
-    const syncedNow = Date.now() + serverOffsetRef.current;
-    if (syncedNow >= expireAt) {
+    if (Date.now() >= expireAt) {
       quitFinishedSession();
       return;
     }
 
     const tick = setInterval(() => {
-      const curNow = Date.now() + serverOffsetRef.current;
+      const curNow = Date.now();
       setNowServerMs(curNow);
       if (curNow >= expireAt) {
         clearInterval(tick);
@@ -462,8 +443,7 @@ function AuctionGameInner() {
     }, 1000);
 
     const onWake = () => {
-      const curNow = Date.now() + serverOffsetRef.current;
-      if (curNow >= expireAt) quitFinishedSession();
+      if (Date.now() >= expireAt) quitFinishedSession();
     };
     document.addEventListener('visibilitychange', onWake);
 
@@ -471,7 +451,7 @@ function AuctionGameInner() {
       clearInterval(tick);
       document.removeEventListener('visibilitychange', onWake);
     };
-  }, [state?.phase, state?.expiresAt]);
+  }, [state?.phase, state?.expiresAt, roomId]);
 
   useEffect(() => {
     if (!roomId || !teamId || state?.phase === 'ANALYZED') return;
@@ -486,7 +466,7 @@ function AuctionGameInner() {
         return;
       }
       const inFastPhase = state?.phase === 'AUCTION' || state?.phase === 'LOT_RESULT';
-      const baseMs = inFastPhase ? (sseConnectedRef.current ? 2000 : 750) : 2500;
+      const baseMs = inFastPhase ? 650 : 2200;
       const waitMs = customMs ?? baseMs;
       timerId = setTimeout(runPoll, waitMs);
     }
@@ -631,10 +611,11 @@ function AuctionGameInner() {
   useEffect(() => {
     if (!state || state.phase !== 'AUCTION') return;
     const id = setInterval(() => {
-      const syncedNow = Date.now() + serverOffsetRef.current;
-      setNowServerMs(syncedNow);
-      if (state.timerEndsAt && !isSyncingBid) {
-        const left = Math.max(0, state.timerEndsAt - syncedNow);
+      const nowMs = Date.now();
+      setNowServerMs(nowMs);
+      const activeBidDeadline = deadlinesRef.current.bidDeadline;
+      if (state.timerEndsAt && activeBidDeadline && !isSyncingBid) {
+        const left = Math.max(0, activeBidDeadline - nowMs);
         const ceil = Math.ceil(left / 1000);
         if (left <= 4000 && ceil > 0 && ceil <= 4 && ceil !== lastBeepSecRef.current) {
           lastBeepSecRef.current = ceil;
@@ -644,7 +625,7 @@ function AuctionGameInner() {
       }
     }, 80);
     return () => clearInterval(id);
-  }, [state?.phase, state?.timerEndsAt, state?.idleEndsAt, isSyncingBid]);
+  }, [state?.phase, state?.timerEndsAt, state?.idleEndsAt, state?.bidCount, isSyncingBid]);
 
   function launchConfetti() {
     const canvas = confettiRef.current;
@@ -891,12 +872,14 @@ function AuctionGameInner() {
   const bidCount = state.bidCount || 0;
 
   const isBidClock = Boolean(state.timerEndsAt) || isSyncingBid;
+  const activeBidDeadline = deadlinesRef.current.bidDeadline || state.timerEndsAt;
+  const activeIdleDeadline = deadlinesRef.current.idleDeadline || state.idleEndsAt;
   const msLeft = isSyncingBid
     ? 10000
     : state.timerEndsAt
-    ? Math.max(0, state.timerEndsAt - nowServerMs)
+    ? Math.max(0, activeBidDeadline - nowServerMs)
     : state.idleEndsAt
-    ? Math.max(0, state.idleEndsAt - nowServerMs)
+    ? Math.max(0, activeIdleDeadline - nowServerMs)
     : 60000;
   const timerPct = isBidClock
     ? Math.max(0, Math.min(100, (msLeft / 10000) * 100))
@@ -1466,7 +1449,7 @@ function AuctionGameInner() {
                     </div>
                     {state.expiresAt && (
                       <div className="ag-verdict-score-pill" style={{ background: 'rgba(15, 23, 42, 0.78)', borderColor: 'rgba(148, 163, 184, 0.3)', color: '#cbd5e1' }}>
-                        Auto-clears in {formatClock(Math.max(0, state.expiresAt - nowServerMs))}
+                        Auto-clears in {formatClock(Math.max(0, (deadlinesRef.current.expiresDeadline || state.expiresAt) - nowServerMs))}
                       </div>
                     )}
                     <button type="button" className="ag-btn ag-btn-cyan-outline" onClick={shareScorecard}>
@@ -1480,7 +1463,7 @@ function AuctionGameInner() {
                   <h2>No Qualified Winner</h2>
                   {state.expiresAt && (
                     <div className="ag-verdict-score-pill" style={{ background: 'rgba(15, 23, 42, 0.78)', borderColor: 'rgba(148, 163, 184, 0.3)', color: '#cbd5e1', marginTop: 8 }}>
-                      Auto-clears in {formatClock(Math.max(0, state.expiresAt - nowServerMs))}
+                      Auto-clears in {formatClock(Math.max(0, (deadlinesRef.current.expiresDeadline || state.expiresAt) - nowServerMs))}
                     </div>
                   )}
                 </>
