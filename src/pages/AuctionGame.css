@@ -590,6 +590,105 @@
   gap: 6px;
 }
 
+.ag-verdict-hero {
+  padding: 24px;
+  text-align: center;
+}
+
+.ag-verdict-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.ag-verdict-score-pill {
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.16);
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  color: #6ee7b7;
+  font-weight: 700;
+  font-size: 0.88rem;
+}
+
+.ag-awards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ag-award-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  cursor: pointer;
+  color: inherit;
+  transition: transform 0.14s ease, border-color 0.14s ease;
+}
+.ag-award-card:hover { transform: translateY(-2px); border-color: var(--gold-bright); }
+
+.ag-award-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  object-fit: cover;
+  object-position: top center;
+  background: #090d16;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  flex-shrink: 0;
+}
+
+.ag-xi-panel {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+
+.ag-xi-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.ag-xi-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid var(--border);
+  color: #f8fafc;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ag-xi-chip:hover { border-color: var(--cyan); }
+.ag-xi-chip.is-impact { border-style: dashed; border-color: rgba(56, 189, 248, 0.55); background: rgba(14, 116, 144, 0.18); }
+
+.ag-xi-slot {
+  font-family: ui-monospace, monospace;
+  font-size: 0.68rem;
+  color: #94a3b8;
+  font-weight: 800;
+}
+.ag-xi-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-xi-badge {
+  font-size: 0.62rem;
+  font-weight: 900;
+  padding: 1px 5px;
+  border-radius: 999px;
+}
+.ag-xi-badge.c { background: rgba(245, 158, 11, 0.25); color: #fde68a; border: 1px solid rgba(245, 158, 11, 0.55); }
+.ag-xi-badge.wk { background: rgba(16, 185, 129, 0.22); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.5); }
+.ag-xi-badge.imp { background: rgba(56, 189, 248, 0.22); color: #7dd3fc; border: 1px solid rgba(56, 189, 248, 0.5); }
+.ag-xi-badge.os { color: #d8b4fe; }
+
 @media (max-width: 1024px) {
   .ag-auction-grid { grid-template-columns: 1fr; }
   .ag-teams-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
@@ -605,6 +704,8 @@
   .ag-lobby { margin: 14px auto; padding: 0 12px 72px; }
   .ag-lobby-card { padding: 18px 14px; }
   .ag-center-panel { margin: 12px auto; padding: 0 12px 72px; }
+  .ag-awards-grid { grid-template-columns: 1fr; gap: 8px; }
+  .ag-verdict-hero { padding: 18px 14px; }
 
   .ag-topbar-desktop-right { display: none; }
   .ag-topbar-utils-mob { display: inline-flex; }

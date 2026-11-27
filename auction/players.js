@@ -92,7 +92,7 @@ const RAW_PLAYERS = [
   ['mcgrath', 'Glenn McGrath', 'Australia', 'Legend', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast-medium', 'Glenn_McGrath', '2008 Prime • 6.61 Econ Pinpoint Line', 14, 4, 80.0, 4.0, 12, 6.61, 10, 5, 8, 12, 90, 0, 76, 0, 76, 86],
   ['symonds', 'Andrew Symonds', 'Australia', 'Legend', 'All-Rounder', 'Middle Order', 'Pace', 'RHB', 'Right-arm medium / offbreak', 'Andrew_Symonds', '2008–10 Prime • 117* & Rocket Arm', 39, 974, 134.0, 36.0, 20, 7.6, 85, 70, 88, 78, 70, 45, 96, 0, 76, 89],
   ['flintoff', 'Andrew Flintoff', 'England', 'Legend', 'All-Rounder', 'Middle Order', 'Pace', 'RHB', 'Right-arm fast', 'Andrew_Flintoff', '2009 Prime • World-Class Seam & Muscle', 18, 180, 132.0, 25.0, 15, 7.9, 75, 50, 78, 82, 86, 0, 84, 0, 78, 84],
-  ['hazlewood', 'Josh Hazlewood', 'Australia', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'LHB', 'Right-arm fast-medium', 'Josh_Hazlewood', '2021–22 Prime • McGrath-Like Test Line', 27, 19, 80.0, 9.0, 35, 7.7, 14, 5, 8, 18, 92, 0, 80, 0, 72, 89],
+  ['hazlewood', 'Josh Hazlewood', 'Australia', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'LHB', 'Right-arm fast-medium', 'Josh_Hazlewood', '2021–24 Prime • T20 World Cup Accuracy', 27, 19, 80.0, 9.0, 35, 7.7, 14, 5, 8, 18, 94, 0, 80, 0, 74, 91],
   ['nortje', 'Anrich Nortje', 'South Africa', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast', 'Anrich_Nortje', '2020 Prime • 156kph Playoff Fire', 46, 49, 95.0, 8.0, 60, 8.2, 16, 6, 10, 22, 91, 0, 81, 0, 64, 88],
   ['hasaranga', 'Wanindu Hasaranga', 'Sri Lanka', 'Modern Star', 'All-Rounder', 'Lower Order', 'Spin', 'RHB', 'Legbreak', 'Wanindu_Hasaranga', '2022 Prime • 26 Wickets Googly Artist', 26, 72, 128.0, 14.0, 35, 7.6, 56, 22, 50, 68, 0, 91, 88, 0, 76, 89],
   ['salt', 'Phil Salt', 'England', 'Modern Star', 'Wicketkeeper', 'Top Order', 'None', 'RHB', 'None', 'Phil_Salt', '2024 Prime • 182 SR KKR Title Opener', 21, 653, 178.0, 36.0, 0, 0.0, 89, 93, 70, 50, 0, 0, 86, 86, 74, 90],
@@ -108,10 +108,10 @@ const RAW_PLAYERS = [
   ['conway', 'Devon Conway', 'New Zealand', 'Modern Star', 'Wicketkeeper', 'Top Order', 'None', 'LHB', 'None', 'Devon_Conway', '2023 Prime • 672 Runs Final POTM', 23, 924, 142.0, 48.6, 0, 0.0, 89, 92, 74, 48, 0, 0, 86, 84, 72, 88],
   ['rachin', 'Rachin Ravindra', 'New Zealand', 'Modern Star', 'All-Rounder', 'Top Order', 'Spin', 'LHB', 'Slow left-arm orthodox', 'Rachin_Ravindra', '2024 Prime • Fearless Strokeplay & Spin', 14, 290, 158.0, 26.0, 4, 8.2, 81, 84, 72, 50, 0, 62, 88, 0, 70, 83],
   ['mitchell', 'Daryl Mitchell', 'New Zealand', 'Modern Star', 'All-Rounder', 'Middle Order', 'Pace', 'RHB', 'Right-arm medium', 'Daryl_Mitchell_(cricketer)', '2024 Prime • Busy Middle-Order Glue', 15, 351, 142.0, 31.0, 1, 8.8, 82, 70, 85, 74, 58, 0, 88, 0, 74, 82],
-  ['boult_ferg', 'Lockie Ferguson', 'New Zealand', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast', 'Lockie_Ferguson', '2020–22 Prime • 157kph Lockie Express', 45, 67, 118.0, 11.0, 46, 8.4, 18, 6, 12, 24, 89, 0, 82, 0, 64, 86],
-  ['southee', 'Tim Southee', 'New Zealand', 'Golden Era', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm medium-fast', 'Tim_Southee', '2015–18 Prime • Outswing & Slower Balls', 54, 120, 116.0, 11.0, 47, 8.5, 28, 10, 18, 38, 85, 0, 84, 0, 82, 83],
+  ['boult_ferg', 'Lockie Ferguson', 'New Zealand', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast', 'Lockie_Ferguson', '2020–24 Prime • 157kph T20I Express', 45, 67, 118.0, 11.0, 46, 8.4, 18, 6, 12, 24, 90, 0, 82, 0, 66, 88],
+  ['southee', 'Tim Southee', 'New Zealand', 'Golden Era', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm medium-fast', 'Tim_Southee', '2015–22 Prime • 160+ T20I Wickets Swing', 54, 120, 116.0, 11.0, 47, 8.5, 28, 10, 18, 38, 88, 0, 84, 0, 84, 86],
   ['henry', 'Matt Henry', 'New Zealand', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast-medium', 'Matt_Henry_(cricketer)', '2023–24 Prime • New Ball Seam Movement', 12, 24, 92.0, 8.0, 16, 8.2, 20, 8, 12, 25, 86, 0, 82, 0, 66, 82],
-  ['santner', 'Mitchell Santner', 'New Zealand', 'Modern Star', 'All-Rounder', 'Lower Order', 'Spin', 'LHB', 'Slow left-arm orthodox', 'Mitchell_Santner', '2022–24 Prime • Economical Left-Arm Control', 18, 88, 115.0, 15.0, 15, 6.9, 55, 25, 50, 66, 0, 87, 91, 0, 84, 84],
+  ['santner', 'Mitchell Santner', 'New Zealand', 'Modern Star', 'All-Rounder', 'Lower Order', 'Spin', 'LHB', 'Slow left-arm orthodox', 'Mitchell_Santner', '2022–24 Prime • T20I Captain & Dart Spin', 18, 88, 115.0, 15.0, 15, 6.9, 58, 25, 52, 68, 0, 90, 91, 0, 86, 87],
   ['theekshana', 'Maheesh Theekshana', 'Sri Lanka', 'Modern Star', 'Bowler', 'Lower Order', 'Spin', 'RHB', 'Right-arm offbreak', 'Maheesh_Theekshana', '2022–23 Prime • Powerplay Mystery Carrom', 27, 15, 72.0, 6.0, 25, 7.6, 14, 5, 10, 16, 0, 87, 78, 0, 64, 84],
   ['pathirana', 'Matheesha Pathirana', 'Sri Lanka', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast', 'Matheesha_Pathirana', '2023–24 Prime • Baby Malinga Death Yorkers', 20, 12, 60.0, 4.0, 34, 7.6, 10, 4, 6, 12, 92, 0, 78, 0, 60, 91],
   ['noor', 'Noor Ahmad', 'Afghanistan', 'Modern Star', 'Bowler', 'Lower Order', 'Spin', 'RHB', 'Left-arm wrist-spin', 'Noor_Ahmad', '2023–24 Prime • Sharp Left-Arm Googly', 23, 22, 85.0, 7.0, 24, 7.9, 15, 5, 10, 18, 0, 88, 82, 0, 60, 86],
@@ -120,13 +120,13 @@ const RAW_PLAYERS = [
   ['holder', 'Jason Holder', 'West Indies', 'Golden Era', 'All-Rounder', 'Lower Order', 'Pace', 'RHB', 'Right-arm medium-fast', 'Jason_Holder', '2020–21 Prime • Bounce & Lower-Order Hits', 46, 259, 125.0, 14.0, 53, 8.5, 60, 28, 56, 74, 85, 0, 84, 0, 86, 84],
   ['hetmyer', 'Shimron Hetmyer', 'West Indies', 'Modern Star', 'Batsman', 'Middle Order', 'None', 'LHB', 'None', 'Shimron_Hetmyer', '2022–24 Prime • Fearless Death Finisher', 72, 1243, 158.0, 34.0, 0, 0.0, 86, 54, 88, 92, 0, 0, 88, 0, 68, 89],
   ['powell', 'Rovman Powell', 'West Indies', 'Modern Star', 'Batsman', 'Middle Order', 'Pace', 'RHB', 'Right-arm medium-fast', 'Rovman_Powell', '2022–24 Prime • Towering Six-Hitter', 27, 360, 152.0, 24.0, 1, 9.0, 82, 48, 84, 88, 48, 0, 86, 0, 80, 85],
-  ['zampa', 'Adam Zampa', 'Australia', 'Modern Star', 'Bowler', 'Lower Order', 'Spin', 'RHB', 'Legbreak googly', 'Adam_Zampa', '2020–23 Prime • White-Ball Leg-Spin Ace', 20, 25, 80.0, 6.0, 29, 7.9, 14, 5, 8, 16, 0, 89, 80, 0, 68, 86],
+  ['zampa', 'Adam Zampa', 'Australia', 'Modern Star', 'Bowler', 'Lower Order', 'Spin', 'RHB', 'Legbreak googly', 'Adam_Zampa', '2020–24 Prime • T20 World Cup Leg-Spin Ace', 20, 25, 80.0, 6.0, 29, 7.9, 14, 5, 8, 16, 0, 93, 80, 0, 70, 90],
   ['ellis', 'Nathan Ellis', 'Australia', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast-medium', 'Nathan_Ellis', '2023 Prime • Back-of-Hand Slower Specialist', 16, 18, 95.0, 9.0, 18, 8.4, 18, 6, 10, 22, 85, 0, 82, 0, 74, 84],
   ['jansen', 'Marco Jansen', 'South Africa', 'Modern Star', 'All-Rounder', 'Lower Order', 'Pace', 'RHB', 'Left-arm fast', 'Marco_Jansen', '2022–24 Prime • 6ft 8in Left-Arm Swing', 21, 66, 120.0, 11.0, 20, 8.8, 54, 22, 48, 68, 86, 0, 84, 0, 64, 84],
   ['stubbs', 'Tristan Stubbs', 'South Africa', 'Modern Star', 'Wicketkeeper', 'Middle Order', 'Spin', 'RHB', 'Right-arm offbreak', 'Tristan_Stubbs', '2024 Prime • 190 SR 360 Finisher', 18, 405, 180.0, 40.0, 3, 7.5, 88, 65, 91, 90, 0, 42, 91, 80, 70, 90],
   ['coetzee', 'Gerald Coetzee', 'South Africa', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast', 'Gerald_Coetzee', '2024 Prime • 150kph Strike Bowler', 12, 22, 110.0, 11.0, 15, 9.2, 26, 8, 16, 36, 86, 0, 82, 0, 62, 84],
   ['ngidi', 'Lungi Ngidi', 'South Africa', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast-medium', 'Lungi_Ngidi', '2018 Prime • 6.00 Econ CSK Champion', 14, 12, 75.0, 6.0, 25, 7.9, 14, 5, 8, 16, 86, 0, 78, 0, 64, 84],
-  ['mustafizur', 'Mustafizur Rahman', 'Bangladesh', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'LHB', 'Left-arm fast-medium', 'Mustafizur_Rahman', '2016 Prime • Fizz Cutters Title Run', 57, 14, 65.0, 5.0, 61, 8.1, 12, 4, 8, 14, 88, 0, 76, 0, 64, 87],
+  ['mustafizur', 'Mustafizur Rahman', 'Bangladesh', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'LHB', 'Left-arm fast-medium', 'Mustafizur_Rahman', '2016–24 Prime • T20I Death Cutter Maestro', 57, 14, 65.0, 5.0, 61, 8.1, 12, 4, 8, 14, 90, 0, 76, 0, 66, 88],
   ['shakib', 'Shakib Al Hasan', 'Bangladesh', 'Golden Era', 'All-Rounder', 'Middle Order', 'Spin', 'LHB', 'Slow left-arm orthodox', 'Shakib_Al_Hasan', '2012–18 Prime • Tactician Spin All-Rounder', 71, 793, 127.0, 22.0, 63, 7.45, 78, 64, 80, 72, 0, 86, 84, 0, 86, 85],
   ['rossouw', 'Rilee Rossouw', 'South Africa', 'Modern Star', 'Batsman', 'Top Order', 'None', 'LHB', 'Right-arm offbreak', 'Rilee_Rossouw', '2023–24 Prime • Brutal Top-Order Leftie', 22, 470, 154.0, 28.0, 0, 0.0, 82, 85, 76, 52, 0, 0, 85, 0, 66, 83],
   ['moeen', 'Moeen Ali', 'England', 'Modern Star', 'All-Rounder', 'Top Order', 'Spin', 'LHB', 'Right-arm offbreak', 'Moeen_Ali', '2021 Prime • Sixes vs Spin + Offbreaks', 67, 1162, 144.0, 24.0, 35, 7.1, 82, 84, 82, 66, 0, 82, 84, 0, 76, 86],
@@ -148,23 +148,23 @@ const RAW_PLAYERS = [
   ['badrinath', 'Subramaniam Badrinath', 'India', 'Golden Era', 'Batsman', 'Middle Order', 'None', 'RHB', 'Right-arm offbreak', 'Subramaniam_Badrinath', '2010–12 Prime • CSK Crisis Anchor', 95, 1441, 122.0, 32.0, 0, 0.0, 79, 72, 83, 60, 0, 0, 84, 0, 70, 77],
   ['tiwary_m', 'Manoj Tiwary', 'India', 'Golden Era', 'Batsman', 'Middle Order', 'Spin', 'RHB', 'Legbreak', 'Manoj_Tiwary', '2012 Prime • Championship Winning Runs', 98, 1695, 120.0, 29.0, 1, 8.2, 77, 70, 80, 62, 0, 22, 85, 0, 74, 76],
   ['ojha_p', 'Pragyan Ojha', 'India', 'Legend', 'Bowler', 'Lower Order', 'Spin', 'LHB', 'Slow left-arm orthodox', 'Pragyan_Ojha', '2010 Prime • Purple Cap Left-Arm Spin', 92, 16, 55.0, 4.0, 89, 7.36, 10, 4, 6, 12, 0, 89, 74, 0, 62, 85],
-  ['rp_singh', 'RP Singh', 'India', 'Legend', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Left-arm fast-medium', 'R._P._Singh', '2009 Prime • Purple Cap 23 Wickets', 82, 52, 75.0, 7.0, 90, 7.89, 15, 5, 8, 18, 88, 0, 74, 0, 64, 86],
-  ['munaf', 'Munaf Patel', 'India', 'Legend', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast-medium', 'Munaf_Patel', '2011 Prime • 22 Wickets Seam Precision', 63, 39, 82.0, 8.0, 74, 7.51, 14, 5, 8, 16, 85, 0, 70, 0, 62, 82],
-  ['sreesanth', 'S. Sreesanth', 'India', 'Legend', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast-medium', 'S._Sreesanth', '2008 Prime • Outswing & Fire', 44, 34, 78.0, 8.0, 40, 8.14, 16, 5, 10, 18, 84, 0, 74, 0, 60, 81],
-  ['praveen', 'Praveen Kumar', 'India', 'Legend', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm medium', 'Praveen_Kumar', '2008–11 Prime • Banana Swing Both Ways', 119, 340, 112.0, 12.0, 90, 7.72, 34, 12, 24, 42, 87, 0, 78, 0, 66, 84],
+  ['rp_singh', 'RP Singh', 'India', 'Legend', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Left-arm fast-medium', 'R._P._Singh', '2009 Prime • Purple Cap 23 Wickets', 82, 52, 75.0, 7.0, 90, 7.89, 15, 5, 8, 18, 85, 0, 74, 0, 64, 84],
+  ['munaf', 'Munaf Patel', 'India', 'Legend', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast-medium', 'Munaf_Patel', '2011 Prime • 22 Wickets Seam Precision', 63, 39, 82.0, 8.0, 74, 7.51, 14, 5, 8, 16, 83, 0, 70, 0, 62, 81],
+  ['sreesanth', 'S. Sreesanth', 'India', 'Legend', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast-medium', 'S._Sreesanth', '2008 Prime • Outswing & Fire', 44, 34, 78.0, 8.0, 40, 8.14, 16, 5, 10, 18, 83, 0, 74, 0, 60, 80],
+  ['praveen', 'Praveen Kumar', 'India', 'Legend', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm medium', 'Praveen_Kumar', '2008–11 Prime • Banana Swing Both Ways', 119, 340, 112.0, 12.0, 90, 7.72, 34, 12, 24, 42, 84, 0, 78, 0, 66, 83],
   ['dinda', 'Ashok Dinda', 'India', 'Golden Era', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast-medium', 'Ashok_Dinda', '2012–16 Prime • High-Effort Seam', 78, 26, 68.0, 5.0, 69, 8.2, 12, 4, 8, 14, 79, 0, 74, 0, 60, 76],
-  ['vinay', 'Vinay Kumar', 'India', 'Golden Era', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm medium-fast', 'Vinay_Kumar', '2012–15 Prime • 105 IPL Wickets Cutter Ace', 105, 304, 112.0, 12.0, 105, 8.35, 32, 10, 20, 40, 84, 0, 78, 0, 76, 82],
-  ['balaji', 'Lakshmipathy Balaji', 'India', 'Legend', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm medium-fast', 'Lakshmipathy_Balaji', '2008/2012 Prime • First IPL Hat-Trick', 73, 36, 74.0, 6.0, 76, 8.0, 14, 5, 8, 16, 84, 0, 74, 0, 64, 82],
+  ['vinay', 'Vinay Kumar', 'India', 'Golden Era', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm medium-fast', 'Vinay_Kumar', '2012–15 Prime • 105 IPL Wickets Cutter Ace', 105, 304, 112.0, 12.0, 105, 8.35, 32, 10, 20, 40, 82, 0, 78, 0, 76, 81],
+  ['balaji', 'Lakshmipathy Balaji', 'India', 'Legend', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm medium-fast', 'Lakshmipathy_Balaji', '2008/2012 Prime • First IPL Hat-Trick', 73, 36, 74.0, 6.0, 76, 8.0, 14, 5, 8, 16, 82, 0, 74, 0, 64, 80],
   ['sharma_i', 'Ishant Sharma', 'India', 'Golden Era', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast-medium', 'Ishant_Sharma', '2011/2019 Prime • 5/12 & Bounce', 110, 57, 78.0, 9.0, 92, 8.15, 16, 6, 10, 20, 84, 0, 76, 0, 68, 82],
-  ['sharma_m', 'Mohit Sharma', 'India', 'Golden Era', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm medium', 'Mohit_Sharma', '2014/2023 Prime • Purple Cap Back-of-Hand', 112, 125, 92.0, 10.0, 132, 8.45, 20, 6, 12, 24, 87, 0, 80, 0, 66, 86],
-  ['umesh', 'Umesh Yadav', 'India', 'Golden Era', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast', 'Umesh_Yadav', '2018/2022 Prime • 145kph Powerplay Bursts', 148, 224, 118.0, 11.0, 144, 8.45, 32, 10, 20, 40, 87, 0, 78, 0, 64, 85],
+  ['sharma_m', 'Mohit Sharma', 'India', 'Golden Era', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm medium', 'Mohit_Sharma', '2014/2023 Prime • Purple Cap Back-of-Hand', 112, 125, 92.0, 10.0, 132, 8.45, 20, 6, 12, 24, 84, 0, 80, 0, 66, 84],
+  ['umesh', 'Umesh Yadav', 'India', 'Golden Era', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast', 'Umesh_Yadav', '2018/2022 Prime • 145kph Powerplay Bursts', 148, 224, 118.0, 11.0, 144, 8.45, 32, 10, 20, 40, 84, 0, 78, 0, 64, 83],
   ['kaul', 'Siddarth Kaul', 'India', 'Golden Era', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm medium-fast', 'Siddarth_Kaul', '2017–18 Prime • 21 Wickets SRH', 55, 22, 65.0, 6.0, 58, 8.6, 12, 4, 8, 14, 80, 0, 74, 0, 60, 78],
-  ['sandeep', 'Sandeep Sharma', 'India', 'Golden Era', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm medium', 'Sandeep_Sharma', '2017/2024 Prime • New-Ball Swing & Yorkers', 126, 54, 72.0, 8.0, 137, 7.85, 14, 4, 8, 16, 88, 0, 78, 0, 64, 86],
-  ['unadkat', 'Jaydev Unadkat', 'India', 'Golden Era', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Left-arm medium-fast', 'Jaydev_Unadkat', '2017 Prime • 24 Wickets Slower Cutters', 105, 198, 108.0, 12.0, 99, 8.8, 26, 8, 16, 34, 82, 0, 78, 0, 70, 81],
-  ['natarajan', 'T. Natarajan', 'India', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'LHB', 'Left-arm medium-fast', 'T._Natarajan', '2020/2024 Prime • Yorker King Left-Arm', 61, 3, 50.0, 3.0, 67, 8.75, 10, 4, 6, 12, 87, 0, 76, 0, 60, 86],
-  ['deepak', 'Deepak Chahar', 'India', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm medium', 'Deepak_Chahar', '2019–21 Prime • Powerplay Swing Wizard', 81, 80, 125.0, 12.0, 77, 7.95, 34, 12, 22, 44, 87, 0, 80, 0, 66, 86],
+  ['sandeep', 'Sandeep Sharma', 'India', 'Golden Era', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm medium', 'Sandeep_Sharma', '2017/2024 Prime • New-Ball Swing & Yorkers', 126, 54, 72.0, 8.0, 137, 7.85, 14, 4, 8, 16, 84, 0, 78, 0, 64, 84],
+  ['unadkat', 'Jaydev Unadkat', 'India', 'Golden Era', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Left-arm medium-fast', 'Jaydev_Unadkat', '2017 Prime • 24 Wickets Slower Cutters', 105, 198, 108.0, 12.0, 99, 8.8, 26, 8, 16, 34, 81, 0, 78, 0, 70, 80],
+  ['natarajan', 'T. Natarajan', 'India', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'LHB', 'Left-arm medium-fast', 'T._Natarajan', '2020/2024 Prime • Yorker King Left-Arm', 61, 3, 50.0, 3.0, 67, 8.75, 10, 4, 6, 12, 83, 0, 76, 0, 60, 84],
+  ['deepak', 'Deepak Chahar', 'India', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm medium', 'Deepak_Chahar', '2019–21 Prime • Powerplay Swing Wizard', 81, 80, 125.0, 12.0, 77, 7.95, 34, 12, 22, 44, 85, 0, 80, 0, 66, 85],
   ['shardul', 'Shardul Thakur', 'India', 'Modern Star', 'All-Rounder', 'Lower Order', 'Pace', 'RHB', 'Right-arm medium-fast', 'Shardul_Thakur', '2021/2023 Prime • Lord Partnership Breaker', 95, 307, 138.0, 14.0, 94, 9.2, 52, 20, 46, 68, 82, 0, 82, 0, 66, 84],
-  ['harshal', 'Harshal Patel', 'India', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm medium-fast', 'Harshal_Patel', '2021 Prime • Record 32 Wickets Purple Cap', 105, 250, 125.0, 13.0, 135, 8.7, 36, 12, 24, 46, 89, 0, 78, 0, 68, 89],
+  ['harshal', 'Harshal Patel', 'India', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm medium-fast', 'Harshal_Patel', '2021 Prime • Record 32 Wickets Purple Cap', 105, 250, 125.0, 13.0, 135, 8.7, 36, 12, 24, 46, 85, 0, 78, 0, 68, 86],
   ['avesh', 'Avesh Khan', 'India', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast-medium', 'Avesh_Khan', '2021/2024 Prime • 24 Wickets & Hard Lengths', 63, 41, 108.0, 10.0, 74, 8.9, 16, 6, 10, 20, 85, 0, 78, 0, 62, 83],
   ['prasidh', 'Prasidh Krishna', 'India', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast', 'Prasidh_Krishna', '2022 Prime • Hit-the-Deck Bounce', 51, 9, 50.0, 3.0, 49, 8.9, 10, 4, 6, 12, 85, 0, 76, 0, 62, 82],
   ['khaleel', 'Khaleel Ahmed', 'India', 'Modern Star', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Left-arm fast-medium', 'Khaleel_Ahmed', '2022–24 Prime • Left-Arm New-Ball Seam', 57, 2, 40.0, 2.0, 74, 8.8, 10, 4, 6, 12, 85, 0, 76, 0, 60, 83],
@@ -317,7 +317,6 @@ const RAW_PLAYERS = [
 ];
 
 const EXTRA_INDIAN_PLAYERS = [
-  ['srinath', 'Javagal Srinath', 'India', 'Legend', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast', 'Javagal_Srinath', 'Pre-IPL Legend • 145kph Express Seam', 0, 0, 0.0, 0.0, 0, 0.0, 22, 8, 14, 28, 89, 0, 76, 0, 74, 84],
   ['agarkar', 'Ajit Agarkar', 'India', 'Legend', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast', 'Ajit_Agarkar', '2008–12 Prime • Fast Outswing & Lower Hits', 42, 179, 118.0, 14.0, 29, 8.8, 34, 12, 22, 44, 84, 0, 82, 0, 70, 81],
   ['chawla_r', 'Ramesh Powar', 'India', 'Legend', 'Bowler', 'Lower Order', 'Spin', 'RHB', 'Right-arm offbreak', 'Ramesh_Powar', '2008–11 Prime • Flight & Loop Tactician', 27, 67, 105.0, 11.0, 13, 7.45, 22, 8, 14, 26, 0, 79, 72, 0, 64, 75],
   ['varun_a', 'Varun Aaron', 'India', 'Golden Era', 'Bowler', 'Lower Order', 'Pace', 'RHB', 'Right-arm fast', 'Varun_Aaron', '2014–19 Prime • 150kph Fireball Pace', 52, 50, 78.0, 7.0, 44, 8.9, 12, 4, 8, 14, 82, 0, 76, 0, 58, 79],
@@ -355,7 +354,10 @@ function expandPlayer(row) {
   if (role === 'Bowler') {
     primarySkill = Math.max(paceBowling, spinBowling);
   } else if (role === 'All-Rounder') {
-    primarySkill = Math.round(batting * 0.52 + Math.max(paceBowling, spinBowling) * 0.48);
+    const bowlSkill = Math.max(paceBowling, spinBowling);
+    const maxSkill = Math.max(batting, bowlSkill);
+    const minSkill = Math.min(batting, bowlSkill);
+    primarySkill = Math.round(maxSkill * 0.68 + minSkill * 0.32);
   } else if (role === 'Wicketkeeper') {
     primarySkill = Math.round(batting * 0.78 + wicketkeeping * 0.22);
   }
@@ -399,7 +401,7 @@ function expandPlayer(row) {
 }
 
 const EXPANDED_POOL = [...RAW_PLAYERS, ...EXTRA_INDIAN_PLAYERS]
-  .filter((row) => row[10] !== 'SkipPlaceholder')
+  .filter((row) => row[10] !== 'SkipPlaceholder' && Number(row[11] || 0) >= 15)
   .map(expandPlayer);
 
 // Curate balanced 160-player prime pool (104 Indian + 56 Overseas)

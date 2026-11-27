@@ -208,6 +208,13 @@ function advanceTimeIfNeeded(room) {
   return changed;
 }
 
+function rateSkill(rating = 0) {
+  const r = Number(rating) || 0;
+  if (r <= 0) return 0;
+  if (r < 50) return Math.round(r * 0.3);
+  return Math.min(100, Math.round(15 + Math.pow((r - 50) / 49, 1.55) * 85));
+}
+
 function scoreSingleTeam(team) {
   const squad = (team.squad || []).map(hydrateSquadEntry).filter(Boolean);
   if (team.quit || squad.length === 0) {
@@ -224,7 +231,7 @@ function scoreSingleTeam(team) {
       roles: { captain: null, wicketkeeper: null, impactPlayer: null },
       scores: {
         topOrderBatting: 0, middleOrderBatting: 0, lowerOrderBatting: 0,
-        paceBowling: 0, spinBowling: 0, allRounderAdvantage: 0, lrCombination: 0,
+        paceBowling: 0, spinBowling: 0, lrCombination: 0,
         overallBalance: 0, captaincy: 0, wicketkeeping: 0, impactPlayer: 0, fieldingQuality: 0
       },
       totalScore: 0,
@@ -233,11 +240,13 @@ function scoreSingleTeam(team) {
     };
   }
 
-  const avgTopN = (arr, n) => {
+  const weightedTopN = (arr, weights) => {
     const sorted = [...arr].sort((a, b) => b - a);
-    let sum = 0;
-    for (let i = 0; i < n; i++) sum += sorted[i] ?? 20;
-    return Math.round(sum / n);
+    let total = 0;
+    for (let i = 0; i < weights.length; i++) {
+      total += (sorted[i] ?? 12) * weights[i];
+    }
+    return Math.round(total);
   };
 
   const lhbBatters = squad.filter((p) => p.battingStyle === 'LHB' && (p.ratings.batting || 0) >= 68).length;
@@ -259,63 +268,80 @@ function scoreSingleTeam(team) {
   const spinComboBoost = activeBowlers.some((p) => p.ratings.spinBowling >= 70 && isLeftArmBowler(p)) &&
     activeBowlers.some((p) => p.ratings.spinBowling >= 70 && !isLeftArmBowler(p)) ? 4 : 0;
 
-  const topOrderBatting = Math.min(100, avgTopN(squad.map((p) => p.ratings.topOrder), 3) + batComboBoost);
-  const middleOrderBatting = Math.min(100, avgTopN(squad.map((p) => p.ratings.middleOrder), 3) + batComboBoost);
-  const lowerOrderBatting = avgTopN(squad.map((p) => p.ratings.lowerOrder), 3);
-  const paceBowling = Math.min(100, avgTopN(squad.map((p) => p.ratings.paceBowling), 3) + paceComboBoost);
-  const spinBowling = Math.min(100, avgTopN(squad.map((p) => p.ratings.spinBowling), 2) + spinComboBoost);
+function rateFielding(rating = 0) {
+  const r = Number(rating) || 0;
+  if (r <= 0) return 10;
+  return Math.min(100, Math.max(10, Math.round(10 + Math.pow(Math.max(0, r - 66) / 33, 1.65) * 90)));
+}
 
-  const twoWayAllRounders = squad
-    .map((p) => {
-      const bestBowl = Math.max(p.ratings.paceBowling || 0, p.ratings.spinBowling || 0);
-      const bat = p.ratings.batting || 0;
-      const isTrueAR = p.role === 'All-Rounder' || (bat >= 58 && bestBowl >= 58);
-      if (!isTrueAR) return 0;
-      return Math.min(bat, bestBowl) * 0.55 + ((bat + bestBowl) / 2) * 0.45;
-    })
-    .filter((v) => v > 0)
-    .sort((a, b) => b - a);
+  // Every player is scored strictly on their individual batting, bowling, keeping & fielding skill ratings (no separate All-Rounder bonus)
+  const topOrderBatting = Math.min(
+    100,
+    weightedTopN(squad.map((p) => rateSkill(p.ratings.topOrder)), [0.42, 0.33, 0.25]) + batComboBoost
+  );
+  const middleOrderBatting = Math.min(
+    100,
+    weightedTopN(squad.map((p) => rateSkill(p.ratings.middleOrder)), [0.42, 0.33, 0.25]) + batComboBoost
+  );
+  const lowerOrderBatting = Math.min(
+    100,
+    weightedTopN(squad.map((p) => rateSkill(p.ratings.lowerOrder)), [0.42, 0.33, 0.25])
+  );
+  const paceBowling = Math.min(
+    100,
+    weightedTopN(squad.map((p) => rateSkill(p.ratings.paceBowling)), [0.45, 0.32, 0.23]) + paceComboBoost
+  );
+  const spinBowling = Math.min(
+    100,
+    weightedTopN(squad.map((p) => rateSkill(p.ratings.spinBowling)), [0.58, 0.42]) + spinComboBoost
+  );
 
-  const arTop3Avg = twoWayAllRounders.length > 0
-    ? (twoWayAllRounders.slice(0, 3).reduce((s, v) => s + v, 0) / 3)
-    : 15;
-  const arDepthBonus = Math.min(18, twoWayAllRounders.length * 5);
-  const allRounderAdvantage = Math.min(100, Math.round(arTop3Avg * 0.85 + arDepthBonus));
-
-  const completeness = (Math.min(squad.length, MAX_SQUAD_SIZE) / MAX_SQUAD_SIZE) * 38;
-  const pureOrAllPace = squad.filter((p) => p.ratings.paceBowling >= 70).length;
-  const pureOrAllSpin = squad.filter((p) => p.ratings.spinBowling >= 70).length;
-  const solidBatters = squad.filter((p) => p.ratings.batting >= 75).length;
-  const keepers = squad.filter((p) => p.ratings.wicketkeeping >= 75).length;
-
-  const balanceRaw = completeness + Math.min(14, solidBatters * 2.8) + Math.min(13, pureOrAllPace * 4.5) +
-    Math.min(11, pureOrAllSpin * 5.5) + Math.min(9, twoWayAllRounders.length * 4) + (keepers >= 1 ? 6 : 0) +
-    (batComboMin >= 1 ? 4 : 0) + (bowlComboMin >= 1 ? 5 : 0);
-  const overallBalance = Math.min(100, Math.round(balanceRaw));
+  // Skill-weighted team balance (no flat headcount giveaways)
+  const completeness = (Math.min(squad.length, MAX_SQUAD_SIZE) / MAX_SQUAD_SIZE) * 28;
+  const batUnitScore = weightedTopN(squad.map((p) => rateSkill(p.ratings.batting)), [0.24, 0.22, 0.2, 0.18, 0.16]) * 0.26;
+  const paceUnitScore = weightedTopN(squad.map((p) => rateSkill(p.ratings.paceBowling)), [0.45, 0.32, 0.23]) * 0.2;
+  const spinUnitScore = weightedTopN(squad.map((p) => rateSkill(p.ratings.spinBowling)), [0.58, 0.42]) * 0.14;
+  const wkSkill = Math.max(0, ...squad.map((p) => rateSkill(p.ratings.wicketkeeping))) * 0.06;
+  const lrBonus = lrCombination * 0.06;
+  const overallBalance = Math.min(100, Math.round(completeness + batUnitScore + paceUnitScore + spinUnitScore + wkSkill + lrBonus));
 
   const captain = squad.find((p) => p.id === team.roles.captainId) || squad[0];
-  const captaincy = Math.min(100, Math.round(captain.ratings.captaincy * 0.85 + captain.ratings.overall * 0.15));
+  const captaincy = Math.min(100, rateSkill(Math.round(captain.ratings.captaincy * 0.85 + captain.ratings.overall * 0.15)));
 
   const keeper = squad.find((p) => p.id === team.roles.wicketkeeperId) || squad[0];
-  const wicketkeeping = Math.min(100, Math.round(keeper.ratings.wicketkeeping * 0.78 + keeper.ratings.batting * 0.22));
+  const wicketkeeping = Math.min(100, rateSkill(Math.round(keeper.ratings.wicketkeeping * 0.78 + keeper.ratings.batting * 0.22)));
 
   const impactPl = squad.find((p) => p.id === team.roles.impactPlayerId) || squad[0];
-  const impactPlayer = Math.min(100, Math.round(impactPl.ratings.impact * 0.78 + impactPl.ratings.overall * 0.22));
+  const impactPlayer = Math.min(100, rateSkill(Math.round(impactPl.ratings.impact * 0.78 + impactPl.ratings.overall * 0.22)));
 
-  const fieldingQuality = avgTopN(squad.map((p) => p.ratings.fielding), Math.min(11, squad.length));
+  // Score fielding across every player in squad including WK's glove/agility value
+  const fieldingScores = squad
+    .map((p) => {
+      const effectiveField =
+        p.id === keeper?.id
+          ? Math.round(p.ratings.fielding * 0.55 + Math.max(p.ratings.wicketkeeping || 0, p.ratings.fielding) * 0.45)
+          : p.ratings.fielding;
+      return rateFielding(effectiveField);
+    })
+    .sort((a, b) => b - a);
+
+  const squadFieldAvg = fieldingScores.reduce((s, v) => s + v, 0) / fieldingScores.length;
+  const top4FieldAvg = fieldingScores.slice(0, Math.min(4, fieldingScores.length)).reduce((s, v) => s + v, 0) / Math.min(4, fieldingScores.length);
+  const fieldCompleteness = Math.min(1, squad.length / 11);
+  const fieldingQuality = Math.min(100, Math.round((top4FieldAvg * 0.35 + squadFieldAvg * 0.65) * fieldCompleteness));
 
   const scores = {
     topOrderBatting, middleOrderBatting, lowerOrderBatting, paceBowling, spinBowling,
-    allRounderAdvantage, lrCombination, overallBalance, captaincy, wicketkeeping, impactPlayer, fieldingQuality
+    lrCombination, overallBalance, captaincy, wicketkeeping, impactPlayer, fieldingQuality
   };
 
   const totalScore = Object.values(scores).reduce((sum, val) => sum + val, 0);
-  const averageScore = Number((totalScore / 12).toFixed(1));
+  const averageScore = Number((totalScore / 11).toFixed(1));
   const avgOverall = Math.round(squad.reduce((sum, p) => sum + p.ratings.overall, 0) / squad.length);
 
   const entries = [
     ['Top Order', topOrderBatting], ['Middle Order', middleOrderBatting], ['Lower Order', lowerOrderBatting],
-    ['Pace Attack', paceBowling], ['Spin Attack', spinBowling], ['All-Rounders', allRounderAdvantage],
+    ['Pace Attack', paceBowling], ['Spin Attack', spinBowling],
     ['L/R Combo', lrCombination], ['Balance', overallBalance], ['Captaincy', captaincy],
     ['Wicketkeeping', wicketkeeping], ['Impact Sub', impactPlayer], ['Fielding', fieldingQuality]
   ].sort((a, b) => b[1] - a[1]);
@@ -364,6 +390,15 @@ export function serializeRoom(room, viewerTeamId = null) {
   const cp = getPlayerById(room.currentPlayerId);
   const outcomePlayer = room.lastLotOutcome ? getPlayerById(room.lastLotOutcome.playerId) : null;
 
+  let nextPlayerId = null;
+  if ((room.phase === 'AUCTION' || room.phase === 'LOT_RESULT') && Array.isArray(room.poolIds)) {
+    if (room.lotIndex + 1 < room.poolIds.length) {
+      nextPlayerId = room.poolIds[room.lotIndex + 1];
+    } else if (room.round === 1 && Array.isArray(room.unsoldIds) && room.unsoldIds.length > 0) {
+      nextPlayerId = room.unsoldIds[0];
+    }
+  }
+
   return {
     version: room.version || 1,
     serverNow: now,
@@ -376,6 +411,7 @@ export function serializeRoom(room, viewerTeamId = null) {
     unsoldCount: room.unsoldIds?.length || 0,
     totalDatabasePlayers: ALL_PLAYERS.length,
     currentPlayer: serializePlayerPublic(cp, revealRatings),
+    nextPlayerId,
     highestBid: room.highestBid,
     highestBidderId: room.highestBidderId,
     highestBidderName: room.teams.find((t) => t.id === room.highestBidderId)?.name || null,
@@ -940,7 +976,6 @@ export function createAuctionService(getDb) {
           { key: 'lowerOrderBatting', label: 'Lower-Order Batting' },
           { key: 'paceBowling', label: 'Pace Bowling' },
           { key: 'spinBowling', label: 'Spin Bowling' },
-          { key: 'allRounderAdvantage', label: 'All-Rounder Advantage' },
           { key: 'lrCombination', label: 'L/R Bat & Bowl Combo' },
           { key: 'overallBalance', label: 'Team Balance' },
           { key: 'captaincy', label: 'Captaincy' },

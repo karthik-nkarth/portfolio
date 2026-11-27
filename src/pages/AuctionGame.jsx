@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './AuctionGame.css';
 
-const APP_VERSION = 'v1.4';
+const APP_VERSION = 'v1.7';
 const formatINR = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
 
 function formatClock(ms) {
@@ -129,6 +129,8 @@ function AuctionGameInner() {
   const [mobTab, setMobTab] = useState('stage');
   const [soundOn, setSoundOn] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [verdictCopied, setVerdictCopied] = useState(false);
+  const [expandedVerdictTeams, setExpandedVerdictTeams] = useState({});
   const [isSyncingBid, setIsSyncingBid] = useState(false);
   const [nowServerMs, setNowServerMs] = useState(() => Date.now());
   const [liveStatsMap, setLiveStatsMap] = useState({});
@@ -138,6 +140,7 @@ function AuctionGameInner() {
   const confettiRef = useRef(null);
   const lastLotKeyRef = useRef(null);
   const lastBidCountRef = useRef(0);
+  const lastLeaderRef = useRef(null);
   const lastOutcomeKeyRef = useRef(null);
   const lastBeepSecRef = useRef(null);
   const versionRef = useRef(state?.version || 0);
@@ -157,12 +160,30 @@ function AuctionGameInner() {
     setNowServerMs(Date.now() + serverOffsetRef.current);
   }
 
-  function playTone(freq, dur, type = 'sine', vol = 0.07) {
-    if (!soundOn) return;
+  function triggerHaptic(pattern) {
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        navigator.vibrate(pattern);
+      }
+    } catch {}
+  }
+
+  function getAudioCtx() {
+    if (!soundOn) return null;
     try {
       if (!audioRef.current) audioRef.current = new (window.AudioContext || window.webkitAudioContext)();
       const ctx = audioRef.current;
       if (ctx.state === 'suspended') ctx.resume();
+      return ctx;
+    } catch {
+      return null;
+    }
+  }
+
+  function playTone(freq, dur, type = 'sine', vol = 0.07) {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    try {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = type;
@@ -174,6 +195,42 @@ function AuctionGameInner() {
       osc.start();
       osc.stop(ctx.currentTime + dur);
     } catch {}
+  }
+
+  // Synthesize realistic double-thump "lub-dub" heartbeat for the final 4 seconds
+  function playHeartbeat(intensity = 1) {
+    triggerHaptic([24, 95, 18]);
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const pulse = (offset, startFreq, endFreq, dur, peakGain) => {
+        const osc = ctx.createOscillator();
+        const filter = ctx.createBiquadFilter();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(startFreq, now + offset);
+        osc.frequency.exponentialRampToValueAtTime(endFreq, now + offset + dur);
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(140, now + offset);
+        gain.gain.setValueAtTime(0.001, now + offset);
+        gain.gain.linearRampToValueAtTime(peakGain * intensity, now + offset + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + offset + dur);
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + offset);
+        osc.stop(now + offset + dur + 0.01);
+      };
+      pulse(0, 78, 38, 0.13, 0.45);     // Lub
+      pulse(0.16, 94, 46, 0.10, 0.34);  // Dub
+    } catch {}
+  }
+
+  function playOutbidAlert() {
+    triggerHaptic([28, 45, 28]);
+    playTone(540, 0.09, 'triangle', 0.08);
+    setTimeout(() => playTone(380, 0.14, 'triangle', 0.07), 85);
   }
 
   function playWoodMallet(accent = 1) {
@@ -233,6 +290,7 @@ function AuctionGameInner() {
   }
 
   function playSoldSequence() {
+    triggerHaptic([22, 120, 22, 120, 50]);
     playWoodMallet(0.85);
     setTimeout(() => playWoodMallet(0.95), 980);
     setTimeout(() => playWoodMallet(1.15), 1530);
@@ -406,6 +464,24 @@ function AuctionGameInner() {
     return () => { alive = false; };
   }, [state?.currentPlayer?.id]);
 
+  // Silently preload the next lot's portrait & IPL stats while the current card is displayed
+  useEffect(() => {
+    const nextId = state?.nextPlayerId;
+    if (!nextId) return;
+    const img = new Image();
+    img.src = `/api/auction/player-image/${encodeURIComponent(nextId)}?v=4`;
+    if (!liveStatsMap[nextId]) {
+      fetch(`/api/auction/player-stats/${encodeURIComponent(nextId)}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data?.ok && data.stats) {
+            setLiveStatsMap((prev) => (prev[nextId] ? prev : { ...prev, [nextId]: { stats: data.stats, source: data.source } }));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [state?.nextPlayerId]);
+
   useEffect(() => {
     if (!state) return;
     if (state.currentPlayer) {
@@ -413,13 +489,22 @@ function AuctionGameInner() {
       if (lastLotKeyRef.current !== lotKey) {
         lastLotKeyRef.current = lotKey;
         lastBidCountRef.current = 0;
+        lastLeaderRef.current = null;
         lastBeepSecRef.current = null;
       }
-      if ((state.bidHistory?.length || 0) > lastBidCountRef.current) {
-        lastBidCountRef.current = state.bidHistory.length;
-        playTone(620, 0.08, 'triangle', 0.08);
-        setTimeout(() => playTone(880, 0.09, 'triangle', 0.06), 55);
+      const prevLeader = lastLeaderRef.current;
+      const newLeader = state.highestBidderId || null;
+      const bidCountNow = state.bidHistory?.length || 0;
+      if (bidCountNow > lastBidCountRef.current) {
+        lastBidCountRef.current = bidCountNow;
+        if (prevLeader === teamId && newLeader && newLeader !== teamId) {
+          playOutbidAlert();
+        } else if (newLeader !== teamId) {
+          playTone(620, 0.08, 'triangle', 0.08);
+          setTimeout(() => playTone(880, 0.09, 'triangle', 0.06), 55);
+        }
       }
+      lastLeaderRef.current = newLeader;
     }
     if (state.phase === 'LOT_RESULT' && state.lastLotOutcome) {
       const outKey = `${state.round}-${state.lotNumber}-${state.lastLotOutcome.status}`;
@@ -427,12 +512,14 @@ function AuctionGameInner() {
         lastOutcomeKeyRef.current = outKey;
         if (state.lastLotOutcome.status === 'SOLD') playSoldSequence();
         else {
+          triggerHaptic([35]);
           playTone(280, 0.14, 'sawtooth', 0.05);
           setTimeout(() => playTone(210, 0.22, 'sawtooth', 0.05), 120);
         }
       }
     }
     if (state.phase === 'ANALYZED' && state.analysis?.standings?.some((s) => s.isWinner)) {
+      triggerHaptic([40, 80, 60]);
       launchConfetti();
     }
   }, [state]);
@@ -445,9 +532,10 @@ function AuctionGameInner() {
       if (state.timerEndsAt && !isSyncingBid) {
         const left = Math.max(0, state.timerEndsAt - syncedNow);
         const ceil = Math.ceil(left / 1000);
-        if (left <= 3500 && ceil > 0 && ceil !== lastBeepSecRef.current) {
+        if (left <= 4000 && ceil > 0 && ceil <= 4 && ceil !== lastBeepSecRef.current) {
           lastBeepSecRef.current = ceil;
-          playTone(950, 0.05, 'sine', 0.05);
+          const intensity = ceil === 1 ? 1.2 : ceil === 2 ? 1.05 : 0.88;
+          playHeartbeat(intensity);
         }
       }
     }, 80);
@@ -533,6 +621,7 @@ function AuctionGameInner() {
     setState(optimistic);
     setBidErr('');
     setIsSyncingBid(true);
+    triggerHaptic(18);
     playTone(620, 0.08, 'triangle', 0.08);
     setTimeout(() => playTone(880, 0.09, 'triangle', 0.06), 55);
 
@@ -674,7 +763,7 @@ function AuctionGameInner() {
             <div className="ag-rule-chip"><strong>Max 4</strong><span>Overseas Rule</span></div>
             <div className="ag-rule-chip"><strong>2m / 10s</strong><span>Idle / Bid Clock</span></div>
             <div className="ag-rule-chip"><strong>2 Rounds</strong><span>Unsold Comeback</span></div>
-            <div className="ag-rule-chip"><strong>12 Metrics</strong><span>L/R + All-Rounder</span></div>
+            <div className="ag-rule-chip"><strong>11 Metrics</strong><span>Skill + L/R Balance</span></div>
           </section>
         </div>
         <div className="ag-bottom-left">
@@ -1161,89 +1250,243 @@ function AuctionGameInner() {
         </section>
       )}
 
-      {state.phase === 'ANALYZED' && state.analysis && (
-        <section className="ag-center-panel">
-          {(() => {
-            const winner = state.analysis.standings.find((s) => s.isWinner);
-            const maxScore = state.analysis.criteriaLabels.length * 100;
-            return (
-              <div className="ag-card" style={{ padding: 28, textAlign: 'center', borderColor: 'rgba(245, 158, 11, 0.55)' }}>
-                {winner ? (
-                  <>
-                    <div style={{ fontSize: '3rem' }}>🏆</div>
-                    <div className="ag-tag">IPL PRIME AUCTION CHAMPION</div>
-                    <h1 style={{ fontSize: 'clamp(1.8rem, 4.5vw, 3rem)', margin: '6px 0' }}>
-                      <span style={{ color: winner.color }}>{winner.teamName}</span> WINS!
-                    </h1>
-                    <p className="ag-muted">{winner.verdict}</p>
-                    <div style={{ display: 'inline-block', marginTop: 10, padding: '8px 18px', borderRadius: 999, background: 'rgba(16,185,129,0.16)', border: '1px solid rgba(16,185,129,0.45)', color: '#6ee7b7', fontWeight: 700 }}>
+      {state.phase === 'ANALYZED' && state.analysis && (() => {
+        const winner = state.analysis.standings.find((s) => s.isWinner);
+        const maxScore = state.analysis.criteriaLabels.length * 100;
+
+        const draftedAll = state.teams
+          .filter((tm) => !tm.quit)
+          .flatMap((tm) => (tm.squad || []).map((pl) => ({ player: pl, team: tm })));
+
+        const mostExpensive = draftedAll.reduce(
+          (best, cur) => ((cur.player.boughtPrice || 0) > (best?.player.boughtPrice || 0) ? cur : best),
+          null
+        );
+        const tournamentMvp = draftedAll.reduce(
+          (best, cur) => ((cur.player.ratings?.overall || 0) > (best?.player.ratings?.overall || 0) ? cur : best),
+          null
+        );
+        const bestValue = draftedAll.reduce((best, cur) => {
+          const ovr = cur.player.ratings?.overall || 0;
+          const price = Math.max(300, cur.player.boughtPrice || 300);
+          const ratio = (ovr * ovr) / price;
+          if (!best) return { ...cur, ratio };
+          return ratio > best.ratio ? { ...cur, ratio } : best;
+        }, null);
+
+        const orderPlayingXII = (squad = [], roles = {}) => {
+          const posRank = { 'Top Order': 1, 'Middle Order': 2, 'Lower Order': 3 };
+          const impId = roles?.impactPlayerId || '';
+          const playingXI = squad
+            .filter((x) => x.id !== impId)
+            .sort((a, b) => (posRank[a.battingPosition] || 2) - (posRank[b.battingPosition] || 2));
+          const impact = squad.find((x) => x.id === impId) || null;
+          return { playingXI, impact };
+        };
+
+        const awards = [
+          mostExpensive && {
+            tag: 'MOST EXPENSIVE',
+            title: mostExpensive.player.name,
+            sub: `${mostExpensive.team.name} • ${formatINR(mostExpensive.player.boughtPrice)}`,
+            player: mostExpensive.player
+          },
+          bestValue && {
+            tag: 'STEAL OF AUCTION',
+            title: bestValue.player.name,
+            sub: `${bestValue.team.name} • OVR ${bestValue.player.ratings?.overall || '-'} @ ${formatINR(bestValue.player.boughtPrice)}`,
+            player: bestValue.player
+          },
+          tournamentMvp && {
+            tag: 'AUCTION MVP',
+            title: tournamentMvp.player.name,
+            sub: `${tournamentMvp.team.name} • OVR ${tournamentMvp.player.ratings?.overall || '-'}`,
+            player: tournamentMvp.player
+          }
+        ].filter(Boolean);
+
+        const shareScorecard = () => {
+          const lines = [
+            `🏏 IPL Prime Auction Verdict (${state.roomId})`,
+            winner ? `🏆 Champion: ${winner.teamName} (${winner.totalScore}/${maxScore})` : 'Auction Concluded',
+            '',
+            ...state.analysis.standings.map((s) => `#${s.rank} ${s.teamName}: ${s.totalScore}/${maxScore} (Avg ${s.averageScore})`)
+          ];
+          if (mostExpensive) lines.push('', `💎 Top Buy: ${mostExpensive.player.name} — ${formatINR(mostExpensive.player.boughtPrice)} (${mostExpensive.team.name})`);
+          if (bestValue) lines.push(`🎯 Best Value: ${bestValue.player.name} — ${formatINR(bestValue.player.boughtPrice)} (${bestValue.team.name})`);
+          navigator.clipboard?.writeText(lines.join('\n'));
+          setVerdictCopied(true);
+          triggerHaptic(18);
+          setTimeout(() => setVerdictCopied(false), 1800);
+        };
+
+        return (
+          <section className="ag-center-panel">
+            <div className="ag-card ag-verdict-hero" style={{ borderColor: 'rgba(245, 158, 11, 0.55)' }}>
+              {winner ? (
+                <>
+                  <div style={{ fontSize: '2.8rem' }}>🏆</div>
+                  <div className="ag-tag">IPL PRIME AUCTION CHAMPION</div>
+                  <h1 style={{ fontSize: 'clamp(1.75rem, 4.5vw, 3rem)', margin: '6px 0' }}>
+                    <span style={{ color: winner.color }}>{winner.teamName}</span> WINS!
+                  </h1>
+                  <p className="ag-muted">{winner.verdict}</p>
+                  <div className="ag-verdict-hero-actions">
+                    <div className="ag-verdict-score-pill">
                       Total Score: {winner.totalScore} / {maxScore} • Avg Rating: {winner.averageScore} / 100
                     </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="ag-tag">AUCTION CONCLUDED</div>
-                    <h2>No Qualified Winner</h2>
-                  </>
-                )}
-              </div>
-            );
-          })()}
-
-          <div className="ag-card" style={{ padding: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
-              <div>
-                <div className="ag-tag">EQUAL-WEIGHT EVALUATION ({state.analysis.criteriaLabels.length} × 100 PTS = {state.analysis.criteriaLabels.length * 100} MAX)</div>
-                <h2 style={{ margin: '4px 0 0' }}>Complete Team Ratings &amp; Breakdown</h2>
-              </div>
-              <button type="button" className="ag-btn ag-btn-cyan-outline" onClick={handleConfirmQuit}>
-                New Auction Game
-              </button>
+                    <button type="button" className="ag-btn ag-btn-cyan-outline" onClick={shareScorecard}>
+                      {verdictCopied ? '✓ Scorecard Copied!' : '📋 Copy Scorecard'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="ag-tag">AUCTION CONCLUDED</div>
+                  <h2>No Qualified Winner</h2>
+                </>
+              )}
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {state.analysis.standings.map((t) => (
-                <div key={t.teamId} style={{ background: 'rgba(7, 11, 20, 0.72)', border: `1px solid ${t.rank === 1 ? '#fbbf24' : 'var(--border)'}`, borderRadius: 16, padding: 18 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-                    <div>
-                      <strong style={{ fontSize: '1.35rem', color: '#fbbf24', marginRight: 8 }}>#{t.rank}</strong>
-                      <strong style={{ fontSize: '1.18rem', color: t.color }}>{t.teamName}</strong>
-                      {t.isWinner && <span className="ag-pill ag-pill-era" style={{ marginLeft: 8 }}>CHAMPION</span>}
-                      {t.disqualified && <span className="ag-pill ag-pill-disq" style={{ marginLeft: 8 }}>DISQUALIFIED</span>}
-                      <div className="ag-muted-xs" style={{ marginTop: 4 }}>
-                        Squad: {t.squadCount}/12 • OS: {t.overseasCount}/4 • Purse Left: {formatINR(t.remainingPurse)}
+            {awards.length > 0 && (
+              <div className="ag-awards-grid">
+                {awards.map((aw) => (
+                  <button
+                    key={aw.tag}
+                    type="button"
+                    className="ag-card ag-award-card"
+                    onClick={() => setInspectedPlayer(aw.player)}
+                  >
+                    <img
+                      className="ag-award-thumb"
+                      src={`/api/auction/player-image/${encodeURIComponent(aw.player.id)}?v=4`}
+                      alt={aw.player.name}
+                    />
+                    <div style={{ minWidth: 0, textAlign: 'left' }}>
+                      <div className="ag-tag" style={{ fontSize: '0.64rem' }}>{aw.tag}</div>
+                      <div style={{ fontWeight: 800, fontSize: '0.98rem', color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {aw.title}
                       </div>
+                      <div className="ag-muted-xs">{aw.sub}</div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: '1.4rem', fontWeight: 800, color: '#fbbf24' }}>
-                        {t.totalScore} / {state.analysis.criteriaLabels.length * 100}
-                      </div>
-                      <div className="ag-muted-xs">Avg {t.averageScore} / 100</div>
-                    </div>
-                  </div>
+                  </button>
+                ))}
+              </div>
+            )}
 
-                  <div className="ag-metrics-grid">
-                    {state.analysis.criteriaLabels.map(({ key, label }) => {
-                      const val = t.scores[key] ?? 0;
-                      const barCol = val >= 85 ? '#10b981' : val >= 70 ? '#fbbf24' : '#ef4444';
-                      return (
-                        <div key={key} className="ag-metric-box">
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#94a3b8' }}>
-                            <span>{label}</span>
-                            <strong style={{ color: '#f8fafc' }}>{val}</strong>
-                          </div>
-                          <div className="ag-bar"><div className="ag-bar-fill" style={{ width: `${val}%`, background: barCol }} /></div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="ag-muted-xs">{t.verdict}</div>
+            <div className="ag-card" style={{ padding: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+                <div>
+                  <div className="ag-tag">EQUAL-WEIGHT EVALUATION ({state.analysis.criteriaLabels.length} × 100 PTS = {maxScore} MAX)</div>
+                  <h2 style={{ margin: '4px 0 0' }}>Complete Team Ratings &amp; Playing XII</h2>
                 </div>
-              ))}
+                <button type="button" className="ag-btn ag-btn-cyan-outline" onClick={handleConfirmQuit}>
+                  New Auction Game
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {state.analysis.standings.map((t) => {
+                  const fullTeam = state.teams.find((tm) => tm.id === t.teamId);
+                  const squadList = fullTeam?.squad || [];
+                  const lr = summarizeLR(squadList);
+                  const { playingXI, impact } = orderPlayingXII(squadList, fullTeam?.roles || {});
+                  const isExpanded = expandedVerdictTeams[t.teamId] ?? (t.rank === 1);
+
+                  return (
+                    <div key={t.teamId} style={{ background: 'rgba(7, 11, 20, 0.72)', border: `1px solid ${t.rank === 1 ? '#fbbf24' : 'var(--border)'}`, borderRadius: 16, padding: 16 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                        <div>
+                          <strong style={{ fontSize: '1.35rem', color: '#fbbf24', marginRight: 8 }}>#{t.rank}</strong>
+                          <strong style={{ fontSize: '1.18rem', color: t.color }}>{t.teamName}</strong>
+                          {t.isWinner && <span className="ag-pill ag-pill-era" style={{ marginLeft: 8 }}>CHAMPION</span>}
+                          {t.disqualified && <span className="ag-pill ag-pill-disq" style={{ marginLeft: 8 }}>DISQUALIFIED</span>}
+                          <div className="ag-muted-xs" style={{ marginTop: 4 }}>
+                            Squad: {t.squadCount}/12 • OS: {t.overseasCount}/4 • Purse Left: {formatINR(t.remainingPurse)}
+                            {squadList.length > 0 ? ` • LHB ${lr.lhb}/RHB ${lr.rhb} • L-Arm ${lr.lArm}/R-Arm ${lr.rArm}` : ''}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: '1.4rem', fontWeight: 800, color: '#fbbf24' }}>
+                            {t.totalScore} / {maxScore}
+                          </div>
+                          <div className="ag-muted-xs">Avg {t.averageScore} / 100</div>
+                        </div>
+                      </div>
+
+                      <div className="ag-metrics-grid">
+                        {state.analysis.criteriaLabels.map(({ key, label }) => {
+                          const val = t.scores[key] ?? 0;
+                          const barCol = val >= 85 ? '#10b981' : val >= 70 ? '#fbbf24' : '#ef4444';
+                          return (
+                            <div key={key} className="ag-metric-box">
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#94a3b8' }}>
+                                <span>{label}</span>
+                                <strong style={{ color: '#f8fafc' }}>{val}</strong>
+                              </div>
+                              <div className="ag-bar"><div className="ag-bar-fill" style={{ width: `${val}%`, background: barCol }} /></div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+                        <div className="ag-muted-xs">{t.verdict}</div>
+                        {squadList.length > 0 && (
+                          <button
+                            type="button"
+                            className="ag-chip"
+                            onClick={() => setExpandedVerdictTeams((prev) => ({ ...prev, [t.teamId]: !isExpanded }))}
+                          >
+                            {isExpanded ? 'Hide Playing XII ▲' : `View Playing XII (${squadList.length}) ▼`}
+                          </button>
+                        )}
+                      </div>
+
+                      {isExpanded && squadList.length > 0 && (
+                        <div className="ag-xi-panel">
+                          <div className="ag-xi-grid">
+                            {playingXI.map((pl, idx) => {
+                              const isC = fullTeam?.roles?.captainId === pl.id;
+                              const isWK = fullTeam?.roles?.wicketkeeperId === pl.id;
+                              return (
+                                <button
+                                  key={pl.id}
+                                  type="button"
+                                  className="ag-xi-chip"
+                                  onClick={() => setInspectedPlayer(pl)}
+                                >
+                                  <span className="ag-xi-slot">{idx + 1}</span>
+                                  <span className="ag-xi-name">{pl.name}</span>
+                                  {isC && <span className="ag-xi-badge c">C</span>}
+                                  {isWK && <span className="ag-xi-badge wk">WK</span>}
+                                  {pl.isOverseas && <span className="ag-xi-badge os">✈</span>}
+                                </button>
+                              );
+                            })}
+                            {impact && (
+                              <button
+                                type="button"
+                                className="ag-xi-chip is-impact"
+                                onClick={() => setInspectedPlayer(impact)}
+                              >
+                                <span className="ag-xi-slot">IMP</span>
+                                <span className="ag-xi-name">{impact.name}</span>
+                                <span className="ag-xi-badge imp">12TH</span>
+                                {impact.isOverseas && <span className="ag-xi-badge os">✈</span>}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        </section>
-      )}
+          </section>
+        );
+      })()}
 
       <div className="ag-bottom-bar">
         <div className="ag-bottom-left">
