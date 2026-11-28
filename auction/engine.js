@@ -209,6 +209,179 @@ function advanceTimeIfNeeded(room) {
   return changed;
 }
 
+function assignBattingSlots(battingContributors) {
+  const isLeftBat = (p) => p.battingStyle === 'LHB' && (p.ratings.batting || 0) >= 62;
+  const isRightBat = (p) => p.battingStyle === 'RHB' && (p.ratings.batting || 0) >= 62;
+
+  const fitFactor = (p, targetZone) => {
+    const nat = p.battingPosition || 'Middle Order';
+    if (nat === targetZone) return 1.0;
+    const ratingKey = targetZone === 'Top Order' ? 'topOrder' : targetZone === 'Middle Order' ? 'middleOrder' : 'lowerOrder';
+    const r = p.ratings?.[ratingKey] || 0;
+    const oneStepAway =
+      (nat === 'Top Order' && targetZone === 'Middle Order') ||
+      (nat === 'Middle Order' && targetZone === 'Top Order') ||
+      (nat === 'Middle Order' && targetZone === 'Lower Order') ||
+      (nat === 'Lower Order' && targetZone === 'Middle Order');
+    if (oneStepAway) return r >= 86 ? 0.86 : 0.76;
+    return r >= 82 ? 0.68 : 0.58;
+  };
+
+  const effScore = (p, zone) => {
+    const key = zone === 'Top Order' ? 'topOrder' : zone === 'Middle Order' ? 'middleOrder' : 'lowerOrder';
+    return Math.round((p.ratings?.[key] || 0) * fitFactor(p, zone));
+  };
+
+  const usedIds = new Set();
+  const pickNatural = (zone, limit, filterFn = () => true) => {
+    const picks = battingContributors
+      .filter((p) => !usedIds.has(p.id) && p.battingPosition === zone && filterFn(p))
+      .sort((a, b) => effScore(b, zone) - effScore(a, zone))
+      .slice(0, limit);
+    picks.forEach((p) => usedIds.add(p.id));
+    return picks;
+  };
+
+  // Pass 1: Lock natural specialists into each zone (max 3 per zone, zero double-counting)
+  const topSlots = pickNatural('Top Order', 3);
+  const midSlots = pickNatural('Middle Order', 3);
+  const lowSlots = pickNatural('Lower Order', 3, (p) => p.role !== 'Bowler' || (p.ratings?.lowerOrder || 0) >= 55);
+
+  const naturalTopCount = battingContributors.filter((p) => p.battingPosition === 'Top Order' && (p.ratings?.batting || 0) >= 65).length;
+  const naturalMidCount = battingContributors.filter((p) => p.battingPosition === 'Middle Order' && (p.ratings?.batting || 0) >= 65).length;
+  const naturalLowCount = battingContributors.filter((p) => p.battingPosition === 'Lower Order' && ((p.ratings?.lowerOrder || 0) >= 68 || p.role === 'All-Rounder')).length;
+
+  const pushedOutOfPosition = [];
+  const fillRemaining = (slots, zone) => {
+    while (slots.length < 3) {
+      const rem = battingContributors
+        .filter((p) => !usedIds.has(p.id))
+        .sort((a, b) => effScore(b, zone) - effScore(a, zone));
+      if (rem.length === 0) break;
+      const chosen = rem[0];
+      usedIds.add(chosen.id);
+      slots.push(chosen);
+      if (chosen.battingPosition !== zone && (chosen.ratings?.batting || 0) >= 65) {
+        pushedOutOfPosition.push({ name: chosen.name, natural: chosen.battingPosition, forcedInto: zone });
+      }
+    }
+  };
+
+  fillRemaining(topSlots, 'Top Order');
+  fillRemaining(midSlots, 'Middle Order');
+  fillRemaining(lowSlots, 'Lower Order');
+
+  const topHasLR = topSlots.some(isLeftBat) && topSlots.some(isRightBat);
+  const midLowPool = [...midSlots, ...lowSlots];
+  const midLowHasLR = midLowPool.some(isLeftBat) && midLowPool.some(isRightBat);
+
+  const lhbCount = battingContributors.filter((p) => p.battingStyle === 'LHB' && (p.ratings?.batting || 0) >= 68).length;
+  const rhbCount = battingContributors.filter((p) => p.battingStyle === 'RHB' && (p.ratings?.batting || 0) >= 68).length;
+
+  return {
+    topRatings: topSlots.map((p) => effScore(p, 'Top Order')),
+    midRatings: midSlots.map((p) => effScore(p, 'Middle Order')),
+    lowRatings: lowSlots.map((p) => effScore(p, 'Lower Order')),
+    topSynergy: topHasLR ? 3 : 0,
+    midSynergy: midLowHasLR ? 3 : 0,
+    topHasLR,
+    midLowHasLR,
+    lhbCount,
+    rhbCount,
+    naturalTopCount,
+    naturalMidCount,
+    naturalLowCount,
+    pushedOutOfPosition,
+    topCrowdingPenalty: naturalTopCount > 3 ? Math.min(8, (naturalTopCount - 3) * 4) : 0
+  };
+}
+
+function evaluateBowlingBlueprint(paceContributors, spinContributors, weightedTopN) {
+  const isLeftArm = (p) => /left-arm|slow left/i.test(p.bowlingStyle || '');
+  const isRightArm = (p) => p.bowlingStyle && p.bowlingStyle !== 'None' && !isLeftArm(p);
+
+  const pacers = paceContributors
+    .filter((p) => (p.ratings?.paceBowling || 0) >= 65)
+    .sort((a, b) => (b.ratings?.paceBowling || 0) - (a.ratings?.paceBowling || 0));
+  const spinners = spinContributors
+    .filter((p) => (p.ratings?.spinBowling || 0) >= 65)
+    .sort((a, b) => (b.ratings?.spinBowling || 0) - (a.ratings?.spinBowling || 0));
+
+  // Union of bowlers across Playing XII (capable of sharing 20 overs at 4 overs max per bowler)
+  const byId = new Map();
+  for (const p of [...paceContributors, ...spinContributors]) {
+    const best = Math.max(p.ratings?.paceBowling || 0, p.ratings?.spinBowling || 0);
+    if (best >= 62 && (!byId.has(p.id) || best > byId.get(p.id))) {
+      byId.set(p.id, best);
+    }
+  }
+  const capableCount = byId.size;
+  const coveredOvers = Math.min(20, capableCount * 4);
+  const partTimerOvers = Math.max(0, 20 - coveredOvers);
+  const hasSixthOption = capableCount >= 6;
+
+  // Powerplay & Death phase pace evaluation (significant impact on paceBowling)
+  const isPPPacer = (p) =>
+    (p.ratings?.paceBowling || 0) >= 78 &&
+    ((p.stats?.economy || 99) <= 8.15 || (/fast/i.test(p.bowlingStyle || '') && p.role === 'Bowler'));
+  const isDeathPacer = (p) =>
+    (p.role === 'Bowler' || (p.ratings?.paceBowling || 0) >= 88) &&
+    (((p.ratings?.paceBowling || 0) >= 86 && (p.stats?.economy || 99) <= 8.55) ||
+      /death|yorker|slower/i.test(p.era || '') ||
+      ((p.ratings?.paceBowling || 0) >= 80 && (p.stats?.wickets || 0) >= 80 && (p.stats?.economy || 99) <= 8.75));
+
+  const ppPacersCount = pacers.filter(isPPPacer).length;
+  const deathPacersCount = pacers.filter(isDeathPacer).length;
+  const ppAdjustment = ppPacersCount >= 2 ? 5 : ppPacersCount === 1 ? 1 : pacers.length > 0 ? -8 : 0;
+  const deathAdjustment = deathPacersCount >= 2 ? 6 : deathPacersCount === 1 ? 2 : pacers.length > 0 ? -9 : 0;
+
+  const paceHasLR = pacers.some(isLeftArm) && pacers.some(isRightArm);
+  const paceArmBonus = paceHasLR ? 5 : 0;
+  const paceShortagePenalty = pacers.length === 1 ? -14 : pacers.length === 0 ? -25 : 0;
+  const paceOversDeficitPenalty = partTimerOvers > 0 && pacers.length <= 2 ? -Math.min(6, partTimerOvers / 2) : 0;
+
+  const rawPaceBase = weightedTopN(pacers.map((p) => p.ratings?.paceBowling || 0), [0.45, 0.33, 0.22]);
+  const paceBowling = pacers.length === 0
+    ? 0
+    : Math.max(15, Math.min(100, Math.round(rawPaceBase * 0.86 + ppAdjustment + deathAdjustment + paceArmBonus + paceShortagePenalty + paceOversDeficitPenalty)));
+
+  // Spin unit & middle-overs control + style/arm variety
+  const leadSpinControl = spinners.some((p) => (p.ratings?.spinBowling || 0) >= 86 && (p.stats?.economy || 99) <= 7.85) ? 4 : 0;
+  const spinHasLR = spinners.some(isLeftArm) && spinners.some(isRightArm);
+  const spinArmBonus = spinHasLR ? 5 : 0;
+  const hasWristOrMystery = spinners.some((p) => /legbreak|wrist|mystery|googly/i.test(p.bowlingStyle || ''));
+  const hasFingerOrOrtho = spinners.some((p) => /offbreak|orthodox/i.test(p.bowlingStyle || ''));
+  const spinStyleBonus = hasWristOrMystery && hasFingerOrOrtho ? 3 : 0;
+  const spinQuotaBonus = spinners.length >= 2 ? 2 : spinners.length === 1 ? -8 : 0;
+  const spinOversPenalty = partTimerOvers > 0 && spinners.length <= 1 ? -4 : 0;
+
+  const rawSpinBase = weightedTopN(spinners.map((p) => p.ratings?.spinBowling || 0), [0.58, 0.42]);
+  const spinBowling = spinners.length === 0
+    ? 0
+    : Math.max(15, Math.min(100, Math.round(rawSpinBase * 0.88 + leadSpinControl + spinArmBonus + spinStyleBonus + spinQuotaBonus + spinOversPenalty)));
+
+  // Overcrowding / imbalance check across the 20-over mix
+  const tooMuchPace = pacers.length >= 4 && spinners.length <= 1;
+  const tooMuchSpin = spinners.length >= 4 && pacers.length <= 1;
+
+  return {
+    paceBowling,
+    spinBowling,
+    pacersCount: pacers.length,
+    spinnersCount: spinners.length,
+    capableCount,
+    coveredOvers,
+    partTimerOvers,
+    hasSixthOption,
+    ppPacersCount,
+    deathPacersCount,
+    paceHasLR,
+    spinHasLR,
+    tooMuchPace,
+    tooMuchSpin
+  };
+}
+
 function scoreSingleTeam(team) {
   const squad = (team.squad || []).map(hydrateSquadEntry).filter(Boolean);
   if (team.quit || squad.length < MAX_SQUAD_SIZE) {
@@ -260,54 +433,66 @@ function scoreSingleTeam(team) {
   const paceContributors = impPace ? [...playingXI, impactPl] : playingXI;
   const spinContributors = impSpin ? [...playingXI, impactPl] : playingXI;
 
-  const lhbBatters = battingContributors.filter((p) => p.battingStyle === 'LHB' && (p.ratings.batting || 0) >= 68).length;
-  const rhbBatters = battingContributors.filter((p) => p.battingStyle === 'RHB' && (p.ratings.batting || 0) >= 68).length;
-  const batComboMin = Math.min(lhbBatters, rhbBatters);
-  const batComboPts = batComboMin >= 3 ? 50 : batComboMin === 2 ? 42 : batComboMin === 1 ? 28 : 10;
+  const batFit = assignBattingSlots(battingContributors);
+  const bowlFit = evaluateBowlingBlueprint(paceContributors, spinContributors, weightedTopN);
 
-  const isLeftArmBowler = (p) => /left-arm|slow left/i.test(p.bowlingStyle || '');
-  const activeBowlers = squad.filter((p) => Math.max(p.ratings.paceBowling || 0, p.ratings.spinBowling || 0) >= 65);
-  const leftArmBowlers = activeBowlers.filter(isLeftArmBowler).length;
-  const rightArmBowlers = activeBowlers.filter((p) => !isLeftArmBowler(p) && p.bowlingStyle && p.bowlingStyle !== 'None').length;
-  const bowlComboMin = Math.min(leftArmBowlers, rightArmBowlers);
-  const bowlComboPts = bowlComboMin >= 2 ? 50 : bowlComboMin === 1 ? 36 : 12;
-  const lrCombination = Math.min(100, batComboPts + bowlComboPts);
-
-  const batComboBoost = batComboMin >= 2 ? 3 : batComboMin === 1 ? 1 : 0;
-  const paceComboBoost = paceContributors.some((p) => p.ratings.paceBowling >= 70 && isLeftArmBowler(p)) &&
-    paceContributors.some((p) => p.ratings.paceBowling >= 70 && !isLeftArmBowler(p)) ? 4 : 0;
-  const spinComboBoost = spinContributors.some((p) => p.ratings.spinBowling >= 70 && isLeftArmBowler(p)) &&
-    spinContributors.some((p) => p.ratings.spinBowling >= 70 && !isLeftArmBowler(p)) ? 4 : 0;
-
-  const topOrderBatting = Math.min(
-    100,
-    weightedTopN(battingContributors.map((p) => p.ratings.topOrder || 0), [0.4, 0.32, 0.28]) + batComboBoost
+  const topOrderBatting = Math.max(
+    10,
+    Math.min(100, weightedTopN(batFit.topRatings, [0.4, 0.32, 0.28]) + batFit.topSynergy - (batFit.naturalTopCount > 3 ? 2 : 0))
   );
-  const middleOrderBatting = Math.min(
-    100,
-    weightedTopN(battingContributors.map((p) => p.ratings.middleOrder || 0), [0.4, 0.32, 0.28]) + batComboBoost
+  const middleOrderBatting = Math.max(
+    10,
+    Math.min(100, weightedTopN(batFit.midRatings, [0.4, 0.32, 0.28]) + batFit.midSynergy - (batFit.naturalMidCount === 0 ? 4 : 0))
   );
-  const lowerOrderBatting = Math.min(
-    100,
-    weightedTopN(battingContributors.map((p) => p.ratings.lowerOrder || 0), [0.4, 0.32, 0.28])
-  );
-  const paceBowling = Math.min(
-    100,
-    weightedTopN(paceContributors.map((p) => p.ratings.paceBowling || 0), [0.45, 0.33, 0.22]) + paceComboBoost
-  );
-  const spinBowling = Math.min(
-    100,
-    weightedTopN(spinContributors.map((p) => p.ratings.spinBowling || 0), [0.58, 0.42]) + spinComboBoost
+  const lowerOrderBatting = Math.max(
+    10,
+    Math.min(100, weightedTopN(batFit.lowRatings, [0.4, 0.32, 0.28]) - (batFit.naturalLowCount === 0 ? 4 : 0))
   );
 
-  // Direct summation-based balance across unreduced unit skills + 12-player completeness
-  const completeness = (Math.min(squad.length, MAX_SQUAD_SIZE) / MAX_SQUAD_SIZE) * 24;
-  const batUnitScore = weightedTopN(battingContributors.map((p) => p.ratings.batting || 0), [0.24, 0.22, 0.2, 0.18, 0.16]) * 0.28;
-  const paceUnitScore = weightedTopN(paceContributors.map((p) => p.ratings.paceBowling || 0), [0.45, 0.33, 0.22]) * 0.2;
-  const spinUnitScore = weightedTopN(spinContributors.map((p) => p.ratings.spinBowling || 0), [0.58, 0.42]) * 0.14;
-  const wkUnitSkill = (keeper?.ratings?.wicketkeeping || 0) * 0.07;
-  const lrBonus = lrCombination * 0.07;
-  const overallBalance = Math.min(100, Math.round(completeness + batUnitScore + paceUnitScore + spinUnitScore + wkUnitSkill + lrBonus));
+  const paceBowling = bowlFit.paceBowling;
+  const spinBowling = bowlFit.spinBowling;
+
+  // Deep L/R combo: 50 pts for Batting LHB/RHB across zones + 50 pts for Bowling Left/Right arm within Pace & Spin
+  const batComboMin = Math.min(batFit.lhbCount, batFit.rhbCount);
+  let batComboPts = batComboMin >= 3 ? 42 : batComboMin === 2 ? 34 : batComboMin === 1 ? 22 : 8;
+  if (batFit.topHasLR) batComboPts += 4;
+  if (batFit.midLowHasLR) batComboPts += 4;
+  batComboPts = Math.min(50, batComboPts);
+
+  const paceArmPts = bowlFit.paceHasLR ? 25 : bowlFit.pacersCount > 0 ? 10 : 0;
+  const spinArmPts = bowlFit.spinHasLR ? 25 : bowlFit.spinnersCount > 0 ? 10 : 0;
+  const lrCombination = Math.min(100, batComboPts + paceArmPts + spinArmPts);
+
+  // 20-Over Team Balance (100 pts max un-saturated): positional fit, 20-over bowling coverage, pace/spin & phase equilibrium, plus core quality
+  const oversScore = (bowlFit.coveredOvers / 20) * 17 + (bowlFit.hasSixthOption ? 3 : 0);
+  const mixScore =
+    bowlFit.pacersCount >= 2 && bowlFit.spinnersCount >= 2
+      ? 10
+      : bowlFit.pacersCount >= 1 && bowlFit.spinnersCount >= 1
+      ? 4
+      : 0;
+  const phaseCoveragePenalty =
+    (bowlFit.ppPacersCount === 0 ? 3 : 0) +
+    (bowlFit.deathPacersCount === 0 ? 4 : 0);
+  const crowdingTax = batFit.naturalTopCount > 3 ? Math.min(12, (batFit.naturalTopCount - 3) * 6) : 0;
+  const missingZonePenalty = (batFit.naturalMidCount === 0 ? 5 : 0) + (batFit.naturalLowCount === 0 ? 5 : 0);
+  const positionCoverageScore =
+    (batFit.naturalTopCount >= 2 ? 6 : 3) +
+    (batFit.naturalMidCount >= 2 ? 6 : batFit.naturalMidCount === 1 ? 3 : 0) +
+    (batFit.naturalLowCount >= 2 ? 6 : batFit.naturalLowCount === 1 ? 3 : 0) -
+    crowdingTax -
+    missingZonePenalty -
+    phaseCoveragePenalty -
+    (bowlFit.tooMuchPace || bowlFit.tooMuchSpin ? 6 : 0);
+
+  const batAvgUnit = ((topOrderBatting + middleOrderBatting + lowerOrderBatting) / 3) * 0.24;
+  const bowlAvgUnit = (paceBowling * 0.1) + (spinBowling * 0.08);
+  const wkUnitSkill = (keeper?.ratings?.wicketkeeping || 0) * 0.05;
+  const lrBonus = lrCombination * 0.05;
+  const overallBalance = Math.max(
+    12,
+    Math.min(100, Math.round(oversScore + mixScore + positionCoverageScore + batAvgUnit + bowlAvgUnit + wkUnitSkill + lrBonus))
+  );
 
   const captaincy = Math.min(100, Math.round(captain.ratings.captaincy || 0));
   const wicketkeeping = Math.min(100, Math.round(keeper.ratings.wicketkeeping || 0));
@@ -370,7 +555,21 @@ function scoreSingleTeam(team) {
     averageScore,
     verdict: `Strengths: ${entries[0][0]} (${entries[0][1]}) & ${entries[1][0]} (${entries[1][1]}). Watch out: ${entries[entries.length - 1][0]} (${entries[entries.length - 1][1]}).`,
     _diag: {
-      lhbBatters, rhbBatters, leftArmBowlers, rightArmBowlers,
+      lhbBatters: batFit.lhbCount,
+      rhbBatters: batFit.rhbCount,
+      naturalTopCount: batFit.naturalTopCount,
+      naturalMidCount: batFit.naturalMidCount,
+      naturalLowCount: batFit.naturalLowCount,
+      pushedOutOfPosition: batFit.pushedOutOfPosition,
+      capableCount: bowlFit.capableCount,
+      coveredOvers: bowlFit.coveredOvers,
+      partTimerOvers: bowlFit.partTimerOvers,
+      pacersCount: bowlFit.pacersCount,
+      spinnersCount: bowlFit.spinnersCount,
+      ppPacersCount: bowlFit.ppPacersCount,
+      deathPacersCount: bowlFit.deathPacersCount,
+      paceHasLR: bowlFit.paceHasLR,
+      spinHasLR: bowlFit.spinHasLR,
       bestCaptainOpt: bestCaptainOpt ? { id: bestCaptainOpt.id, name: bestCaptainOpt.name, val: Math.round(bestCaptainOpt.ratings?.captaincy || 0) } : null,
       bestKeeperOpt: bestKeeperOpt ? { id: bestKeeperOpt.id, name: bestKeeperOpt.name, val: Math.round(bestKeeperOpt.ratings?.wicketkeeping || 0) } : null,
       bestImpactOpt: bestImpactOpt ? { id: bestImpactOpt.id, name: bestImpactOpt.name, val: Math.round(bestImpactOpt.ratings?.impact || 0) } : null
@@ -422,6 +621,7 @@ function buildPostMortem(entry, winner, criteriaLabels) {
     .join(' and ');
 
   let reasonDetail = '';
+  const pushedList = diag.pushedOutOfPosition || [];
   if (primary?.key === 'captaincy') {
     const capName = entry.roles?.captain?.name || 'selected Captain';
     if (diag.bestCaptainOpt && diag.bestCaptainOpt.val > primary.mine) {
@@ -443,10 +643,30 @@ function buildPostMortem(entry, winner, criteriaLabels) {
     } else {
       reasonDetail = `Impact Sub choice ${impName} (${primary.mine}) had lower X-factor impact than ${winner.teamName}'s sub; reserving a versatile high-impact finisher/bowler for 12th man helps.`;
     }
-  } else if (primary?.key === 'paceBowling' || primary?.key === 'spinBowling') {
-    reasonDetail = `Attack depth in ${primary.label} fell behind ${winner.teamName}—locking in a prime wicket-taking ${primary.key === 'paceBowling' ? 'pacer (+ L-arm variety)' : 'spinner'} in earlier rounds would have flipped this matchup.`;
+  } else if ((primary?.key === 'middleOrderBatting' || primary?.key === 'lowerOrderBatting' || primary?.key === 'overallBalance') && pushedList.length > 0) {
+    const sample = pushedList.slice(0, 2).map((x) => `${x.name} (${x.natural} forced into ${x.forcedInto})`).join(', ');
+    reasonDetail = `${diag.naturalTopCount >= 4 ? `Overloaded Top Order (${diag.naturalTopCount} openers/top-order picks) pushed ` : ''}${sample} out of position, damaging batting effectiveness; drafting dedicated ${primary.key === 'lowerOrderBatting' ? 'finishers' : 'middle-order batsmen'} fixes this.`;
+  } else if (primary?.key === 'paceBowling') {
+    const missingPhase = [];
+    if (diag.ppPacersCount === 0) missingPhase.push('no new-ball Powerplay pacer');
+    if (diag.deathPacersCount === 0) missingPhase.push('no specialist Death-overs pacer');
+    if (!diag.paceHasLR) missingPhase.push('no Left-Arm Pace angle');
+    if ((diag.pacersCount || 0) < 2) missingPhase.push(`only ${diag.pacersCount || 0} frontline pacer`);
+    reasonDetail = missingPhase.length > 0
+      ? `Pace unit suffered from ${missingPhase.join(' & ')}—adding Powerplay + Death pace depth${!diag.paceHasLR ? ' and a left-arm pacer' : ''} was crucial.`
+      : `Pace attack quality trailed ${winner.teamName}; adding an elite Powerplay/Death specialist would have swung the score.`;
+  } else if (primary?.key === 'spinBowling') {
+    reasonDetail = (diag.spinnersCount || 0) < 2
+      ? `Had only ${diag.spinnersCount || 0} frontline spinner (${(diag.spinnersCount || 0) * 4} spin overs out of 20); drafting 2 complementary spinners${!diag.spinHasLR ? ' with Left/Right-arm variation' : ''} is vital.`
+      : `Spin control & Left/Right variation (${diag.spinHasLR ? 'L/R present' : 'single-arm spin only'}) fell short of ${winner.teamName}.`;
+  } else if (primary?.key === 'overallBalance') {
+    if ((diag.partTimerOvers || 0) > 0) {
+      reasonDetail = `Only ${diag.capableCount || 0} capable bowlers covered ${diag.coveredOvers || 0}/20 overs, forcing ${diag.partTimerOvers} overs from weak part-timers alongside ${diag.naturalTopCount || 0}/${diag.naturalMidCount || 0}/${diag.naturalLowCount || 0} positional balance.`;
+    } else {
+      reasonDetail = `Positional fit (${diag.naturalTopCount || 0} Top / ${diag.naturalMidCount || 0} Mid / ${diag.naturalLowCount || 0} Low) and ${diag.pacersCount || 0} Pace / ${diag.spinnersCount || 0} Spin balance trailed ${winner.teamName}.`;
+    }
   } else if (primary?.key === 'lrCombination') {
-    reasonDetail = `Left/Right hand & bowling arm mix (LHB ${diag.lhbBatters ?? 0}/RHB ${diag.rhbBatters ?? 0}, L-Arm ${diag.leftArmBowlers ?? 0}/R-Arm ${diag.rightArmBowlers ?? 0}) lagged behind #1—adding an extra LHB batter or left-arm bowler would have boosted multiple categories.`;
+    reasonDetail = `Variation lagged (Bat LHB ${diag.lhbBatters ?? 0}/RHB ${diag.rhbBatters ?? 0}; Pace L/R: ${diag.paceHasLR ? 'Yes' : 'Missing'}, Spin L/R: ${diag.spinHasLR ? 'Yes' : 'Missing'})—balancing left-right options across batting & bowling boosts multiple metrics.`;
   } else if (primary) {
     reasonDetail = `Addressing the ${primary.label} shortfall (${primary.mine} vs ${primary.winScore}) through sharper priority bidding was the biggest swing factor.`;
   }
